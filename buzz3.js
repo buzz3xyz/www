@@ -93,8 +93,8 @@ const translations = {
     // Members
     'members.title': 'Community Members',
     'members.subtitle': 'Meet the brilliant minds driving innovation in our Web3 community',
-    'members.alex.role': 'Lead Developer',
-    'members.alex.bio': 'Solidity expert with 8+ years in blockchain development.',
+    'members.charlie.role': 'Lead Developer',
+    'members.charlie.bio': 'Solidity expert with 8+ years in blockchain development.',
     'members.sarah.role': 'Research Lead',
     'members.sarah.bio': 'PhD in Cryptography. ZK proofs researcher.',
     'members.marcus.role': 'Community Manager',
@@ -229,8 +229,8 @@ const translations = {
     // Members
     'members.title': '社区成员',
     'members.subtitle': '认识推动我们 Web3 社区创新的杰出人才',
-    'members.alex.role': '首席开发者',
-    'members.alex.bio': 'Solidity 专家，8+ 年区块链开发经验。',
+    'members.charlie.role': '首席开发者',
+    'members.charlie.bio': 'Solidity 专家，8+ 年区块链开发经验。',
     'members.sarah.role': '研究主管',
     'members.sarah.bio': '密码学博士。ZK 证明研究员。',
     'members.marcus.role': '社区经理',
@@ -365,8 +365,8 @@ const translations = {
     // Members
     'members.title': 'コミュニティメンバー',
     'members.subtitle': '私たちの Web3 コミュニティのイノベーションを推進する brilliant minds をご紹介',
-    'members.alex.role': 'リード開発者',
-    'members.alex.bio': 'Solidity エキスパート。8 年以上のブロックチェーン開発経験。',
+    'members.charlie.role': 'リード開発者',
+    'members.charlie.bio': 'Solidity エキスパート。8 年以上のブロックチェーン開発経験。',
     'members.sarah.role': 'リサーチリード',
     'members.sarah.bio': '暗号学の博士号。ZK 証明の研究者。',
     'members.marcus.role': 'コミュニティマネージャー',
