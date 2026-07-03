@@ -1,3 +1,40 @@
+// ===== SITE CONFIG =====
+// Fill these in as the real destinations come online. Unset entries show an
+// honest "coming soon" toast instead of pretending to work.
+const SITE_CONFIG = {
+  // e.g. 'https://formspree.io/f/xxxxxxx' or your own API endpoint
+  formEndpoint: '',
+  socials: {
+    twitter: '',   // e.g. 'https://x.com/buzz3xyz'
+    discord: '',
+    github: '',
+    telegram: ''
+  }
+};
+
+// ===== TOAST =====
+function showToast(message) {
+  let toast = document.getElementById('buzzToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'buzzToast';
+    toast.className = 'toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('visible');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => toast.classList.remove('visible'), 2600);
+}
+
+function comingSoonMessage() {
+  const lang = localStorage.getItem('buzz3-lang') || 'en';
+  return lang === 'zh' ? '即将开放，敬请期待' :
+         lang === 'ja' ? '近日公開予定です' : 'Coming soon — stay tuned!';
+}
+
 // ===== I18N SYSTEM =====
 const translations = {
   en: {
@@ -99,6 +136,10 @@ const translations = {
     // Ecosystem
     'ecosystem.title': 'Supported Ecosystems',
     'ecosystem.subtitle': 'Building across the multi-chain landscape',
+
+    // Partners
+    'partners.title': 'Built on Open Infrastructure',
+    'partners.subtitle': 'The Web3 and AI stack we build with',
     
     // CTA
     'cta.title': 'Ready to Build the Future?',
@@ -231,6 +272,10 @@ const translations = {
     // Ecosystem
     'ecosystem.title': '支持的生态系统',
     'ecosystem.subtitle': '跨多链格局构建',
+
+    // Partners
+    'partners.title': '构建于开放基础设施',
+    'partners.subtitle': '我们所使用的 Web3 与 AI 技术栈',
     
     // CTA
     'cta.title': '准备好构建未来了吗？',
@@ -363,6 +408,10 @@ const translations = {
     // Ecosystem
     'ecosystem.title': '対応エコシステム',
     'ecosystem.subtitle': 'マルチチェーン全体にわたる構築',
+
+    // Partners
+    'partners.title': 'オープンなインフラの上に構築',
+    'partners.subtitle': '私たちが活用する Web3 と AI の技術スタック',
     
     // CTA
     'cta.title': '未来を構築する準備はできましたか？',
@@ -438,193 +487,386 @@ function setLanguage(lang) {
   document.querySelectorAll('.lang-option').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.lang === lang);
   });
+
+  // Re-split hero title chars after i18n update
+  splitHeroTitle();
 }
 
 // ===== THEME SYSTEM =====
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('buzz3-theme', theme);
-  
-  // Update canvas colors for particles
+
   if (typeof updateParticleColors === 'function') {
     updateParticleColors(theme);
   }
 }
 
-function toggleTheme() {
+function toggleTheme(event) {
   const current = document.documentElement.getAttribute('data-theme');
   const next = current === 'dark' ? 'light' : 'dark';
-  setTheme(next);
-}
 
-// ===== CUSTOM CURSOR =====
-const cursorDot = document.getElementById('cursorDot');
-const cursorRing = document.getElementById('cursorRing');
-const isDarkTheme = () => document.documentElement.getAttribute('data-theme') === 'dark';
-
-if (window.matchMedia('(min-width: 769px)').matches && isDarkTheme()) {
-  let mouseX = 0, mouseY = 0;
-  let ringX = 0, ringY = 0;
-
-  document.addEventListener('mousemove', (e) => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
-    
-    if (cursorDot) {
-      cursorDot.style.left = mouseX - 4 + 'px';
-      cursorDot.style.top = mouseY - 4 + 'px';
-    }
-  });
-
-  function animateRing() {
-    ringX += (mouseX - ringX) * 0.15;
-    ringY += (mouseY - ringY) * 0.15;
-    
-    if (cursorRing) {
-      cursorRing.style.left = ringX - 20 + 'px';
-      cursorRing.style.top = ringY - 20 + 'px';
-    }
-    
-    requestAnimationFrame(animateRing);
+  if (event && event.currentTarget && !prefersReducedMotion) {
+    const btn = event.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxDim = Math.max(window.innerWidth, window.innerHeight) * 2;
+    const ripple = document.createElement('div');
+    ripple.className = 'theme-ripple';
+    ripple.style.left = cx + 'px';
+    ripple.style.top = cy + 'px';
+    ripple.style.width = maxDim + 'px';
+    ripple.style.height = maxDim + 'px';
+    ripple.style.background = next === 'dark' ? '#030308' : '#F8FAFC';
+    document.body.appendChild(ripple);
+    requestAnimationFrame(() => ripple.classList.add('expanding'));
+    setTimeout(() => {
+      setTheme(next);
+    }, 100);
+    setTimeout(() => ripple.remove(), 700);
+  } else {
+    setTheme(next);
   }
-  animateRing();
-
-  const interactiveElements = document.querySelectorAll('a, button, .feature-card, .ai-card, .member-card, .service-card, .chain-item');
-  interactiveElements.forEach(el => {
-    el.addEventListener('mouseenter', () => {
-      if (cursorRing) cursorRing.classList.add('hover');
-    });
-    el.addEventListener('mouseleave', () => {
-      if (cursorRing) cursorRing.classList.remove('hover');
-    });
-  });
 }
 
-// ===== PARTICLE BACKGROUND =====
+// ===== WEBGL FLUID SHADER BACKGROUND =====
 const canvas = document.getElementById('hero-canvas');
-let particleColor = 'rgba(124, 58, 237,';
-let lineColor = 'rgba(124, 58, 237,';
-let mouseLineColor = 'rgba(0, 245, 255,';
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let shaderColors = {
+  // Purple stays as ambient depth; the glow is brand honey gold.
+  dark:  { base: [0.012, 0.012, 0.031], mid: [0.365, 0.17, 0.696], glow: [0.961, 0.62, 0.18] },
+  // Light theme must stay near-white: saturated shader colors bury the
+  // dark hero text (badge/subtitle become unreadable, worst on mobile).
+  light: { base: [0.972, 0.976, 0.988], mid: [0.902, 0.886, 0.965], glow: [0.988, 0.925, 0.78] }
+};
+let currentShaderColors = shaderColors.dark.base.concat(shaderColors.dark.mid, shaderColors.dark.glow);
+let targetShaderColors = currentShaderColors.slice();
+
+// [-1, 1]: average 24h change across tracked coins, set by the ticker fetch.
+// The hero shader reads it to modulate glow intensity and flow speed.
+let marketEnergy = 0;
 
 function updateParticleColors(theme) {
-  if (theme === 'light') {
-    particleColor = 'rgba(124, 58, 237,';
-    lineColor = 'rgba(124, 58, 237,';
-    mouseLineColor = 'rgba(8, 145, 178,';
-  } else {
-    particleColor = 'rgba(124, 58, 237,';
-    lineColor = 'rgba(124, 58, 237,';
-    mouseLineColor = 'rgba(0, 245, 255,';
+  const c = shaderColors[theme] || shaderColors.dark;
+  targetShaderColors = c.base.concat(c.mid, c.glow);
+}
+
+const VERT_SHADER = `
+attribute vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
+`;
+
+const FRAG_SHADER = `
+precision highp float;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec2 u_mouse;
+uniform vec3 u_base;
+uniform vec3 u_mid;
+uniform vec3 u_glow;
+uniform float u_energy;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += amp * noise(p);
+    p *= 2.0;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  vec2 p = uv * 3.0;
+  float t = u_time * 0.08;
+
+  vec2 m = (u_mouse / u_resolution - 0.5) * 2.0;
+
+  vec2 q = vec2(fbm(p + vec2(t, t * 0.7)), fbm(p + vec2(t * 0.5, t)));
+  q += m * 0.08;
+
+  vec2 r = vec2(
+    fbm(p + q + vec2(1.7, 9.2) + t * 0.3),
+    fbm(p + q + vec2(8.3, 2.8) + t * 0.2)
+  );
+
+  float n = fbm(p + r * 1.5);
+
+  vec3 col = mix(u_base, u_mid, smoothstep(0.2, 0.6, n));
+  col = mix(col, u_glow, smoothstep(0.45, 0.85, length(r)) * 0.6);
+
+  // u_energy in [-1,1] tracks the live market's average 24h move:
+  // green days glow warmer/brighter, red days cool down.
+  float glowAmt = pow(max(n - 0.5, 0.0), 2.5) * (0.4 + 0.3 * u_energy);
+  col += glowAmt * u_glow;
+
+  float vignette = 1.0 - dot(uv - 0.5, uv - 0.5) * 0.7;
+  col *= vignette;
+
+  col *= 0.97 + 0.03 * sin(gl_FragCoord.y * 0.8);
+
+  float alpha = 0.85;
+  gl_FragColor = vec4(col, alpha);
+}
+`;
+
+let glRenderer = null;
+
+function initWebGLShader() {
+  if (!canvas) return null;
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (!gl) return null;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      gl.deleteShader(s);
+      return null;
+    }
+    return s;
+  }
+
+  const vs = compile(gl.VERTEX_SHADER, VERT_SHADER);
+  const fs = compile(gl.FRAGMENT_SHADER, FRAG_SHADER);
+  if (!vs || !fs) return null;
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+  const posLoc = gl.getAttribLocation(prog, 'a_position');
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const u = {
+    resolution: gl.getUniformLocation(prog, 'u_resolution'),
+    time: gl.getUniformLocation(prog, 'u_time'),
+    mouse: gl.getUniformLocation(prog, 'u_mouse'),
+    base: gl.getUniformLocation(prog, 'u_base'),
+    mid: gl.getUniformLocation(prog, 'u_mid'),
+    glow: gl.getUniformLocation(prog, 'u_glow'),
+    energy: gl.getUniformLocation(prog, 'u_energy')
+  };
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  return { gl, prog, u, mouse: { x: 0, y: 0 } };
+}
+
+function resizeWebGL(gl) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth * dpr;
+  const h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    gl.viewport(0, 0, w, h);
   }
 }
 
-if (canvas) {
-  const ctx = canvas.getContext('2d');
-  let particles = [];
-  let mouseParticle = { x: 0, y: 0 };
+function lerp(a, b, t) { return a + (b - a) * t; }
 
-  function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
+if (canvas && !prefersReducedMotion) {
+  glRenderer = initWebGLShader();
 
-  class Particle {
-    constructor() {
-      this.x = Math.random() * canvas.width;
-      this.y = Math.random() * canvas.height;
-      this.size = Math.random() * 2 + 0.5;
-      this.speedX = (Math.random() - 0.5) * 0.5;
-      this.speedY = (Math.random() - 0.5) * 0.5;
-      this.opacity = Math.random() * 0.5 + 0.2;
-    }
+  if (glRenderer) {
+    const { gl, u, mouse } = glRenderer;
+    let canvasVisible = true;
+    let animId = null;
+    // Accumulated sim time: flow speed follows market energy without the
+    // jump a plain elapsed*factor would cause when the factor changes.
+    let simTime = 0;
+    let lastNow = performance.now();
+    let energySmooth = 0;
 
-    update() {
-      this.x += this.speedX;
-      this.y += this.speedY;
+    function render() {
+      if (!canvasVisible) { animId = null; return; }
+      resizeWebGL(gl);
 
-      if (this.x > canvas.width) this.x = 0;
-      if (this.x < 0) this.x = canvas.width;
-      if (this.y > canvas.height) this.y = 0;
-      if (this.y < 0) this.y = canvas.height;
-    }
+      const now = performance.now();
+      energySmooth = lerp(energySmooth, marketEnergy, 0.01);
+      simTime += (now - lastNow) / 1000 * (1 + 0.3 * energySmooth);
+      lastNow = now;
+      const t = simTime;
 
-    draw() {
-      ctx.fillStyle = `${particleColor} ${this.opacity})`;
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function initParticles() {
-    particles = [];
-    const count = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000));
-    for (let i = 0; i < count; i++) {
-      particles.push(new Particle());
-    }
-  }
-
-  function drawLines() {
-    for (let i = 0; i < particles.length; i++) {
-      const dxM = particles[i].x - mouseParticle.x;
-      const dyM = particles[i].y - mouseParticle.y;
-      const distM = Math.sqrt(dxM * dxM + dyM * dyM);
-      
-      if (distM < 200) {
-        const opacity = (1 - distM / 200) * 0.5;
-        ctx.strokeStyle = `${mouseLineColor} ${opacity})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(particles[i].x, particles[i].y);
-        ctx.lineTo(mouseParticle.x, mouseParticle.y);
-        ctx.stroke();
+      for (let i = 0; i < 9; i++) {
+        currentShaderColors[i] = lerp(currentShaderColors[i], targetShaderColors[i], 0.02);
       }
 
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x;
-        const dy = particles[i].y - particles[j].y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+      gl.uniform2f(u.resolution, canvas.width, canvas.height);
+      gl.uniform1f(u.time, t);
+      gl.uniform1f(u.energy, energySmooth);
+      gl.uniform2f(u.mouse, mouse.x, canvas.height - mouse.y);
+      gl.uniform3f(u.base, currentShaderColors[0], currentShaderColors[1], currentShaderColors[2]);
+      gl.uniform3f(u.mid, currentShaderColors[3], currentShaderColors[4], currentShaderColors[5]);
+      gl.uniform3f(u.glow, currentShaderColors[6], currentShaderColors[7], currentShaderColors[8]);
 
-        if (distance < 150) {
-          const opacity = (1 - distance / 150) * 0.3;
-          ctx.strokeStyle = `${lineColor} ${opacity})`;
-          ctx.lineWidth = 0.5;
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      animId = requestAnimationFrame(render);
+    }
+
+    const heroSection = document.querySelector('.hero');
+    if (heroSection) {
+      heroSection.addEventListener('mousemove', (e) => {
+        const rect = heroSection.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        mouse.x = (e.clientX - rect.left) * dpr;
+        mouse.y = (e.clientY - rect.top) * dpr;
+      });
+    }
+
+    const canvasObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        canvasVisible = entry.isIntersecting;
+        if (canvasVisible && !animId) {
+          lastNow = performance.now();
+          render();
+        }
+      });
+    }, { threshold: 0 });
+    if (heroSection) canvasObserver.observe(heroSection);
+
+    render();
+
+  } else {
+    // ===== FALLBACK: 2D PARTICLE SYSTEM =====
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let mouseParticle = { x: 0, y: 0 };
+    let particleColor = 'rgba(124, 58, 237,';
+    let lineColor = 'rgba(124, 58, 237,';
+    let mouseLineColor = 'rgba(245, 158, 11,';
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    class Particle {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 2 + 0.5;
+        this.speedX = (Math.random() - 0.5) * 0.5;
+        this.speedY = (Math.random() - 0.5) * 0.5;
+        this.opacity = Math.random() * 0.5 + 0.2;
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x > canvas.width) this.x = 0;
+        if (this.x < 0) this.x = canvas.width;
+        if (this.y > canvas.height) this.y = 0;
+        if (this.y < 0) this.y = canvas.height;
+      }
+      draw() {
+        ctx.fillStyle = `${particleColor} ${this.opacity})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function initParticles() {
+      particles = [];
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      const maxCount = isMobile ? 30 : 80;
+      const count = Math.min(maxCount, Math.floor((canvas.width * canvas.height) / 15000));
+      for (let i = 0; i < count; i++) particles.push(new Particle());
+    }
+
+    let canvasVisible = true;
+    let animFrameId = null;
+
+    function animateParticles() {
+      if (!canvasVisible) { animFrameId = null; return; }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => { p.update(); p.draw(); });
+
+      for (let i = 0; i < particles.length; i++) {
+        const dxM = particles[i].x - mouseParticle.x;
+        const dyM = particles[i].y - mouseParticle.y;
+        const distM = Math.sqrt(dxM * dxM + dyM * dyM);
+        if (distM < 200) {
+          ctx.strokeStyle = `${mouseLineColor} ${(1 - distM / 200) * 0.5})`;
+          ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.lineTo(mouseParticle.x, mouseParticle.y);
           ctx.stroke();
         }
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 150) {
+            ctx.strokeStyle = `${lineColor} ${(1 - distance / 150) * 0.3})`;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
       }
+      animFrameId = requestAnimationFrame(animateParticles);
     }
-  }
 
-  function animateParticles() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const heroSection = document.querySelector('.hero');
+    if (heroSection) {
+      heroSection.addEventListener('mousemove', (e) => {
+        const rect = heroSection.getBoundingClientRect();
+        mouseParticle.x = e.clientX - rect.left;
+        mouseParticle.y = e.clientY - rect.top;
+      });
+    }
 
-    particles.forEach(particle => {
-      particle.update();
-      particle.draw();
-    });
-
-    drawLines();
-    requestAnimationFrame(animateParticles);
-  }
-
-  const heroSection = document.querySelector('.hero');
-  if (heroSection) {
-    heroSection.addEventListener('mousemove', (e) => {
-      const rect = heroSection.getBoundingClientRect();
-      mouseParticle.x = e.clientX - rect.left;
-      mouseParticle.y = e.clientY - rect.top;
-    });
-  }
-
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  if (!prefersReducedMotion) {
     resizeCanvas();
     initParticles();
     animateParticles();
+
+    const canvasObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        canvasVisible = entry.isIntersecting;
+        if (canvasVisible && !animFrameId) animateParticles();
+      });
+    }, { threshold: 0 });
+    if (heroSection) canvasObserver.observe(heroSection);
 
     window.addEventListener('resize', () => {
       resizeCanvas();
@@ -633,33 +875,23 @@ if (canvas) {
   }
 }
 
-// ===== NAVBAR SCROLL =====
-const navbar = document.querySelector('.navbar');
-window.addEventListener('scroll', () => {
-  if (window.pageYOffset > 50) {
-    navbar.classList.add('scrolled');
-  } else {
-    navbar.classList.remove('scrolled');
-  }
-});
-
 // ===== MOBILE MENU =====
 const hamburger = document.getElementById('hamburger');
 const navLinks = document.getElementById('navLinks');
 
 if (hamburger && navLinks) {
-  hamburger.addEventListener('click', () => {
-    hamburger.classList.toggle('active');
-    navLinks.classList.toggle('active');
-    hamburger.setAttribute('aria-expanded', hamburger.classList.contains('active'));
-  });
+  function toggleMenu(force) {
+    const isOpen = force !== undefined ? force : !hamburger.classList.contains('active');
+    hamburger.classList.toggle('active', isOpen);
+    navLinks.classList.toggle('active', isOpen);
+    hamburger.setAttribute('aria-expanded', isOpen);
+    document.body.classList.toggle('menu-open', isOpen);
+  }
+
+  hamburger.addEventListener('click', () => toggleMenu());
 
   navLinks.querySelectorAll('a').forEach(link => {
-    link.addEventListener('click', () => {
-      hamburger.classList.remove('active');
-      navLinks.classList.remove('active');
-      hamburger.setAttribute('aria-expanded', 'false');
-    });
+    link.addEventListener('click', () => toggleMenu(false));
   });
 }
 
@@ -729,16 +961,30 @@ function typeText() {
 
 // ===== COUNTER ANIMATION =====
 function animateCounter(element, target) {
-  let current = 0;
-  const increment = target / 60;
-  const timer = setInterval(() => {
-    current += increment;
-    if (current >= target) {
-      current = target;
-      clearInterval(timer);
+  const duration = 2000;
+  const start = performance.now();
+
+  function easeOutExpo(t) {
+    return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+  }
+
+  function frame(now) {
+    const elapsed = now - start;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = easeOutExpo(progress);
+    const value = Math.floor(target * eased);
+    element.textContent = value.toLocaleString() + '+';
+
+    if (progress < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      element.textContent = target.toLocaleString() + '+';
+      element.classList.add('counter-done');
+      setTimeout(() => element.classList.remove('counter-done'), 600);
     }
-    element.textContent = Math.floor(current).toLocaleString() + '+';
-  }, 16);
+  }
+
+  requestAnimationFrame(frame);
 }
 
 // ===== SCROLL ANIMATIONS =====
@@ -815,10 +1061,77 @@ function createNeuralNetwork() {
 createNeuralNetwork();
 
 // ===== FORM SUBMISSION =====
-function handleSubmit(event) {
+async function handleSubmit(event) {
   event.preventDefault();
-  const input = event.target.querySelector('input');
-  
+  const form = event.target;
+  const input = form.querySelector('input');
+  const btn = form.querySelector('button[type="submit"]');
+
+  if (!input.value || !input.checkValidity()) {
+    input.classList.add('invalid');
+    setTimeout(() => input.classList.remove('invalid'), 400);
+    input.focus();
+    return;
+  }
+
+  // No backend wired up yet: say so instead of faking a success.
+  if (!SITE_CONFIG.formEndpoint) {
+    showToast(comingSoonMessage());
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch(SITE_CONFIG.formEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ email: input.value })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    input.classList.add('invalid');
+    setTimeout(() => input.classList.remove('invalid'), 400);
+    const lang = localStorage.getItem('buzz3-lang') || 'en';
+    showToast(lang === 'zh' ? '提交失败，请稍后再试' :
+              lang === 'ja' ? '送信に失敗しました。後でもう一度お試しください' :
+              'Submission failed — please try again later');
+    return;
+  }
+  if (btn) btn.disabled = false;
+
+  if (btn && !prefersReducedMotion) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓';
+    btn.classList.add('cta-form-btn-success');
+    const rect = btn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const colors = ['#F59E0B', '#FBBF24', '#FCD34D', '#FDE68A', '#D97706', '#7C3AED'];
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle-burst';
+      p.style.left = cx + 'px';
+      p.style.top = cy + 'px';
+      p.style.background = colors[i % colors.length];
+      p.style.boxShadow = '0 0 8px ' + colors[i % colors.length];
+      document.body.appendChild(p);
+      const angle = (i / 20) * Math.PI * 2;
+      const dist = 60 + Math.random() * 60;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      p.animate([
+        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0)`, opacity: 0 }
+      ], { duration: 600, easing: 'cubic-bezier(0.16,1,0.3,1)' });
+      setTimeout(() => p.remove(), 650);
+    }
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.remove('cta-form-btn-success');
+    }, 2000);
+  }
+
   input.value = '';
   const thankYouMsg = {
     en: 'Thanks for joining!',
@@ -827,7 +1140,7 @@ function handleSubmit(event) {
   };
   input.placeholder = thankYouMsg[currentLang] || thankYouMsg.en;
   input.disabled = true;
-  
+
   setTimeout(() => {
     const placeholderKey = 'cta.emailPlaceholder';
     input.placeholder = translations[currentLang][placeholderKey] || translations.en[placeholderKey];
@@ -839,7 +1152,18 @@ function handleSubmit(event) {
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   anchor.addEventListener('click', function (e) {
     e.preventDefault();
-    const target = document.querySelector(this.getAttribute('href'));
+    const href = this.getAttribute('href');
+    // Bare "#" = placeholder destination. querySelector('#') would throw,
+    // and silently jumping to top pretends the link works.
+    if (href === '#') {
+      if (this.classList.contains('nav-logo')) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        showToast(comingSoonMessage());
+      }
+      return;
+    }
+    const target = document.querySelector(href);
     if (target) {
       target.scrollIntoView({
         behavior: 'smooth',
@@ -850,15 +1174,20 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 });
 
 // ===== PARALLAX EFFECT ON HERO =====
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 if (!prefersReducedMotion) {
   const heroContent = document.querySelector('.hero-content');
+  let parallaxTicking = false;
   window.addEventListener('scroll', () => {
-    const scroll = window.pageYOffset;
-    if (heroContent && scroll < window.innerHeight) {
-      heroContent.style.transform = `translateY(${scroll * 0.3}px)`;
-      heroContent.style.opacity = 1 - (scroll / window.innerHeight);
+    if (!parallaxTicking) {
+      requestAnimationFrame(() => {
+        const scroll = window.pageYOffset;
+        if (heroContent && scroll < window.innerHeight) {
+          heroContent.style.transform = `translateY(${scroll * 0.3}px)`;
+          heroContent.style.opacity = 1 - (scroll / window.innerHeight);
+        }
+        parallaxTicking = false;
+      });
+      parallaxTicking = true;
     }
   });
 }
@@ -877,7 +1206,7 @@ if (beeLogo) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     
-    const colors = ['#F59E0B', '#FBBF24', '#FCD34D', '#FDE68A', '#00F5FF'];
+    const colors = ['#F59E0B', '#FBBF24', '#FCD34D', '#FDE68A', '#D97706'];
     const emojis = ['🐝', '🍯', '✨', '💛', '⚡'];
     
     for (let i = 0; i < 8; i++) {
@@ -929,19 +1258,504 @@ if (beeLogo) {
   });
 }
 
+// ===== HERO TITLE CHAR ANIMATION =====
+function splitHeroTitle() {
+  const lines = document.querySelectorAll('.hero-title .glitch, .hero-title .gradient-text');
+  lines.forEach(line => {
+    const text = line.textContent.trim();
+    if (!text) return;
+
+    if (line.classList.contains('glitch')) {
+      line.setAttribute('data-text', text);
+    }
+
+    // Wrap each word in a nowrap container so lines only break between
+    // words — bare inline-block chars would let words split mid-word.
+    let charIndex = 0;
+    line.innerHTML = text.split(' ').map(word =>
+      '<span class="word">' + [...word].map(c =>
+        `<span class="char" style="--i:${charIndex++}">${c}</span>`
+      ).join('') + '</span>'
+    ).join(' ');
+  });
+}
+
+// ===== MAGNETIC BUTTONS =====
+function initMagneticButtons() {
+  if (prefersReducedMotion) return;
+  if (window.matchMedia('(max-width: 768px)').matches) return;
+
+  const buttons = document.querySelectorAll('.btn-primary, .btn-outline, .btn-wallet');
+  buttons.forEach(btn => {
+    btn.addEventListener('mousemove', e => {
+      const rect = btn.getBoundingClientRect();
+      const x = e.clientX - rect.left - rect.width / 2;
+      const y = e.clientY - rect.top - rect.height / 2;
+      const strength = 0.3;
+      btn.style.setProperty('--magnetic-x', `${x * strength}px`);
+      btn.style.setProperty('--magnetic-y', `${y * strength}px`);
+    });
+
+    btn.addEventListener('mouseleave', () => {
+      btn.style.setProperty('--magnetic-x', '0px');
+      btn.style.setProperty('--magnetic-y', '0px');
+    });
+  });
+}
+
+// ===== CARD EFFECTS (Spotlight + 3D Tilt) =====
+function initCardEffects() {
+  if (prefersReducedMotion) return;
+
+  const cards = document.querySelectorAll('.feature-card, .ai-card, .service-card');
+  cards.forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      card.style.setProperty('--mx', `${x}px`);
+      card.style.setProperty('--my', `${y}px`);
+
+      const cx = x / rect.width - 0.5;
+      const cy = y / rect.height - 0.5;
+      const maxTilt = 8;
+      card.style.setProperty('--tilt-x', `${-cy * maxTilt}deg`);
+      card.style.setProperty('--tilt-y', `${cx * maxTilt}deg`);
+    });
+
+    card.addEventListener('mouseleave', () => {
+      card.style.setProperty('--tilt-x', '0deg');
+      card.style.setProperty('--tilt-y', '0deg');
+    });
+  });
+}
+
 // ===== INITIALIZATION =====
+
+function initNavbarScroll() {
+  const navbar = document.querySelector('.navbar');
+  if (!navbar) return;
+
+  let lastScrollY = 0;
+  let ticking = false;
+
+  function update() {
+    const scrollY = window.scrollY;
+    if (scrollY > lastScrollY && scrollY > 200) {
+      navbar.classList.add('hide-on-scroll');
+      navbar.classList.remove('show-on-scroll');
+    } else {
+      navbar.classList.add('show-on-scroll');
+      navbar.classList.remove('hide-on-scroll');
+    }
+    if (scrollY > 50) {
+      navbar.classList.add('scrolled');
+    } else {
+      navbar.classList.remove('scrolled');
+    }
+    lastScrollY = scrollY;
+    ticking = false;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(update);
+      ticking = true;
+    }
+  }, { passive: true });
+}
+
+function initWalletConnect() {
+  const btn = document.getElementById('walletBtn');
+  if (!btn) return;
+
+  const textEl = btn.querySelector('.wallet-text');
+  if (!textEl) return;
+
+  function t(en, zh, ja) {
+    const lang = localStorage.getItem('buzz3-lang') || 'en';
+    return lang === 'zh' ? zh : lang === 'ja' ? ja : en;
+  }
+
+  function shortAddr(addr) {
+    return addr.slice(0, 6) + '...' + addr.slice(-4);
+  }
+
+  function setConnected(addr) {
+    textEl.removeAttribute('data-i18n');
+    textEl.innerHTML = '<span class="wallet-address"></span>';
+    textEl.querySelector('.wallet-address').textContent = shortAddr(addr);
+    btn.dataset.state = 'connected';
+  }
+
+  function setDefault() {
+    btn.dataset.state = 'default';
+    textEl.setAttribute('data-i18n', 'nav.connectWallet');
+    textEl.textContent = t('Connect Wallet', '连接钱包', 'ウォレット接続');
+  }
+
+  // Restore an already-authorized session without prompting.
+  if (window.ethereum) {
+    window.ethereum.request({ method: 'eth_accounts' })
+      .then(accounts => { if (accounts && accounts.length) setConnected(accounts[0]); })
+      .catch(() => {});
+
+    window.ethereum.on?.('accountsChanged', accounts => {
+      if (accounts && accounts.length) setConnected(accounts[0]);
+      else setDefault();
+    });
+  }
+
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.state === 'connected' || btn.dataset.state === 'loading') return;
+
+    if (!window.ethereum) {
+      textEl.removeAttribute('data-i18n');
+      textEl.textContent = t('No Wallet Found', '未检测到钱包', 'ウォレット未検出');
+      setTimeout(setDefault, 2500);
+      return;
+    }
+
+    btn.dataset.state = 'loading';
+    textEl.removeAttribute('data-i18n');
+    textEl.textContent = t('Connecting...', '连接中...', '接続中...');
+
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts.length) {
+        setConnected(accounts[0]);
+      } else {
+        setDefault();
+      }
+    } catch (err) {
+      // 4001 = user rejected the request
+      setDefault();
+    }
+  });
+}
+
+async function initTickerAPI() {
+  const track = document.getElementById('tickerTrack');
+  const section = track?.closest('.ticker-section');
+  if (!track || !section) return;
+
+  const coinIds = {
+    eth: 'ethereum',
+    btc: 'bitcoin',
+    sol: 'solana',
+    avax: 'avalanche-2',
+    matic: 'matic-network',
+    bnb: 'binancecoin'
+  };
+
+  const prevPrices = {};
+  let retryCount = 0;
+  const maxRetries = 3;
+
+  async function fetchPrices() {
+    try {
+      const ids = Object.values(coinIds).join(',');
+      const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids +
+                               '&vs_currencies=usd&include_24hr_change=true');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+
+      section.dataset.state = 'live';
+      retryCount = 0;
+
+      // Feed average 24h momentum into the hero shader (±5% = full range)
+      const changes = Object.values(coinIds)
+        .map(id => data[id] && data[id].usd_24h_change)
+        .filter(c => typeof c === 'number');
+      if (changes.length) {
+        const avg = changes.reduce((s, c) => s + c, 0) / changes.length;
+        marketEnergy = Math.max(-1, Math.min(1, avg / 5));
+      }
+
+      Object.entries(coinIds).forEach(([key, id]) => {
+        const coinData = data[id];
+        if (!coinData) return;
+
+        const price = coinData.usd;
+        const change = coinData.usd_24h_change || 0;
+        const isUp = change >= 0;
+        const priceStr = '$' + price.toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: price < 1 ? 4 : 2
+        });
+
+        track.querySelectorAll('[data-coin="' + key + '"]').forEach(item => {
+          const valEl = item.querySelector('.value');
+          const changeEl = item.querySelector('.change');
+          if (valEl) {
+            const oldPrice = prevPrices[key];
+            if (oldPrice !== undefined && oldPrice !== price) {
+              valEl.classList.remove('flash-up', 'flash-down');
+              void valEl.offsetWidth;
+              valEl.classList.add(price > oldPrice ? 'flash-up' : 'flash-down');
+            }
+            valEl.textContent = priceStr;
+          }
+          if (changeEl) {
+            changeEl.textContent = (isUp ? '+' : '') + change.toFixed(1) + '%';
+            changeEl.className = 'change ' + (isUp ? 'up' : 'down');
+          }
+          prevPrices[key] = price;
+        });
+      });
+    } catch (e) {
+      retryCount++;
+      if (retryCount >= maxRetries) {
+        section.dataset.state = 'error';
+      }
+    }
+  }
+
+  await fetchPrices();
+  setInterval(fetchPrices, 30000);
+}
+
+function initTickerPause() {
+  const track = document.getElementById('tickerTrack');
+  if (!track) return;
+  let userPaused = false;
+
+  track.addEventListener('mouseenter', () => track.classList.add('paused'));
+  track.addEventListener('mouseleave', () => {
+    if (!userPaused) track.classList.remove('paused');
+  });
+
+  // WCAG 2.2.2: explicit pause control, reachable without hover
+  const pauseBtn = document.getElementById('tickerPause');
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => {
+      userPaused = !userPaused;
+      track.classList.toggle('paused', userPaused);
+      pauseBtn.setAttribute('aria-pressed', String(userPaused));
+      pauseBtn.setAttribute('aria-label', userPaused ? 'Resume ticker' : 'Pause ticker');
+    });
+  }
+}
+
+// ===== AI STORY (sticky scroll narrative) =====
+function initAiStory() {
+  const cards = document.querySelectorAll('.ai-story .ai-card');
+  const current = document.getElementById('aiStoryCurrent');
+  const bar = document.getElementById('aiStoryBar');
+  const visual = document.getElementById('aiStoryVisual');
+  const titleEl = document.getElementById('aiStoryTitle');
+  if (!cards.length || !current) return;
+
+  function setActive(index) {
+    cards.forEach((card, i) => card.classList.toggle('story-active', i === index));
+    current.textContent = String(index + 1).padStart(2, '0');
+    if (bar) bar.style.transform = 'scaleX(' + ((index + 1) / cards.length) + ')';
+    const icon = cards[index].querySelector('.ai-card-icon');
+    if (visual && icon) visual.innerHTML = icon.innerHTML;
+    const heading = cards[index].querySelector('h3');
+    if (titleEl && heading) titleEl.textContent = heading.textContent;
+  }
+
+  setActive(0);
+
+  // A card becomes the active "step" when it crosses the viewport middle band
+  const storyObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        setActive(Array.prototype.indexOf.call(cards, entry.target));
+      }
+    });
+  }, { rootMargin: '-40% 0px -40% 0px', threshold: 0 });
+
+  cards.forEach(card => storyObserver.observe(card));
+}
+
+function initKonamiCode() {
+  const sequence = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+  let pos = 0;
+  document.addEventListener('keydown', (e) => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (key === sequence[pos]) {
+      pos++;
+      if (pos === sequence.length) {
+        document.body.classList.toggle('konami');
+        pos = 0;
+      }
+    } else {
+      pos = key === sequence[0] ? 1 : 0;
+    }
+  });
+}
+
+function initStatRings() {
+  const rings = document.querySelectorAll('.ring-progress');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const target = parseFloat(el.dataset.ringTarget || '0.5');
+        const circumference = 157.08;
+        const offset = circumference * (1 - target);
+        requestAnimationFrame(() => {
+          el.style.strokeDashoffset = offset;
+        });
+        observer.unobserve(el);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  rings.forEach(r => observer.observe(r));
+}
+
+function initScrollProgress() {
+  const bar = document.getElementById('scrollProgress');
+  if (!bar) return;
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        const h = document.documentElement.scrollHeight - window.innerHeight;
+        const pct = h > 0 ? window.scrollY / h : 0;
+        bar.style.transform = 'scaleX(' + pct + ')';
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+}
+
+function initTimelinePoints() {
+  const items = document.querySelectorAll('.timeline-item');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('passed');
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  items.forEach(item => obs.observe(item));
+}
+
+function initSocialBrandTags() {
+  const map = {
+    Twitter: 'twitter', X: 'twitter',
+    Discord: 'discord',
+    GitHub: 'github',
+    Telegram: 'telegram'
+  };
+  document.querySelectorAll('a[aria-label]').forEach(a => {
+    const brand = map[a.getAttribute('aria-label')];
+    if (!brand) return;
+    a.dataset.brand = brand;
+    const url = SITE_CONFIG.socials[brand];
+    if (url) {
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+    }
+  });
+}
+
+function initScrollSpy() {
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-links a');
+  if (!sections.length || !navLinks.length) return;
+
+  const linkMap = {};
+  navLinks.forEach(a => {
+    const href = a.getAttribute('href');
+    if (href && href.startsWith('#')) linkMap[href.substring(1)] = a;
+  });
+
+  const spyObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const link = linkMap[entry.target.id];
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3, rootMargin: '-10% 0px -40% 0px' });
+
+  sections.forEach(s => spyObserver.observe(s));
+}
+
+function initBackToTop() {
+  const btn = document.querySelector('.back-to-top');
+  const hero = document.getElementById('home');
+  if (!btn || !hero) return;
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        const heroBottom = hero.offsetHeight;
+        btn.classList.toggle('visible', window.scrollY > heroBottom);
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+}
+
+function initParallax() {
+  if (prefersReducedMotion) return;
+  if (window.matchMedia('(max-width: 768px)').matches) return;
+  const sections = document.querySelectorAll('.section');
+  if (!sections.length) return;
+  let ticking = false;
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        const viewportCenter = window.innerHeight / 2;
+        sections.forEach(s => {
+          const rect = s.getBoundingClientRect();
+          const sectionCenter = rect.top + rect.height / 2;
+          const offset = (sectionCenter - viewportCenter) * 0.04;
+          s.style.setProperty('--parallax-y', `${offset}px`);
+        });
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  // Load saved theme
-  const savedTheme = localStorage.getItem('buzz3-theme') || 'dark';
-  setTheme(savedTheme);
-  
-  // Load saved language
+  const savedTheme = localStorage.getItem('buzz3-theme');
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+  setTheme(initialTheme);
+
+  if (!savedTheme && window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      setTheme(e.matches ? 'dark' : 'light');
+    });
+  }
+
   const savedLang = localStorage.getItem('buzz3-lang') || 'en';
   setLanguage(savedLang);
-  
-  // Start typing effect
+
+  initMagneticButtons();
+  initCardEffects();
+  initNavbarScroll();
+  initWalletConnect();
+  initTickerPause();
+  initAiStory();
+  initKonamiCode();
+  initStatRings();
+  initTickerAPI();
+  initScrollProgress();
+  initTimelinePoints();
+  initSocialBrandTags();
+  initScrollSpy();
+  initBackToTop();
+  initParallax();
+
   if (!prefersReducedMotion) {
-    setTimeout(typeText, 500);
+    setTimeout(typeText, 300);
   } else {
     const typingEl = document.getElementById('typingText');
     if (typingEl && typingTexts.length > 0) {
