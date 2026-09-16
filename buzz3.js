@@ -2,15 +2,148 @@
 // Fill these in as the real destinations come online. Unset entries show an
 // honest "coming soon" toast instead of pretending to work.
 const SITE_CONFIG = {
-  // e.g. 'https://formspree.io/f/xxxxxxx' or your own API endpoint
+  // ---- Contact form ---------------------------------------------------------
+  // Where the "Contact Us" modal posts to. Leave empty and the form says so
+  // plainly rather than faking a successful send. See 联系表单配置指南.md.
+  //   Formspree   https://formspree.io/f/xxxxxxxx
+  //   Web3Forms   https://api.web3forms.com/submit/<ACCESS_KEY>
+  //   Your own    any endpoint that takes POST + JSON and answers 2xx
   formEndpoint: '',
+
+  // Optional. Sent as `subject`, which both Formspree and Web3Forms read to
+  // label the notification email. Other endpoints ignore unknown fields.
+  formSubject: '',
+
+  // Optional. Cloudflare Turnstile site key. Fill it in and the widget is
+  // rendered inside the modal and its token posted as `turnstileToken`; your
+  // endpoint then verifies it server-side. Free, no Google account, and no
+  // cross-site tracking — unlike reCAPTCHA. Leave empty for the layered
+  // client-side defences only.
+  turnstileSiteKey: '',
+
   socials: {
     twitter: '',   // e.g. 'https://x.com/buzz3xyz'
     discord: '',
     github: '',
-    telegram: ''
+    // Telegram invite link — the QR card renders itself from this value.
+    // Leave empty and the card shows an honest "not configured" state
+    // instead of a code that points nowhere.
+    //
+    // Use the canonical t.me invite, not a link shortener. The invite Bro
+    // supplied arrived as a QR whose payload was https://hlnks.co/81861e1e
+    // (hovercode.com), which 302s here. Routing our own visitors through a
+    // third party's redirector would hand them the click analytics and add a
+    // dependency that can expire — so the destination is stored directly.
+    telegram: 'https://t.me/+qmTlC70FaEdjMDFl'
   }
 };
+
+// ===== CONTACT FORM SPAM GUARD =====
+// Layered, cheapest check first. Everything here is a *deterrent*, not a
+// guarantee: a determined human can pass all of it. Its job is to make the
+// automated 99% not worth the sender's time, while never blocking a real
+// enquiry. Turnstile (above) is the layer that actually proves humanity.
+const SPAM_GUARD = {
+  // Nobody reads a 4-field form, types a message and submits faster than this.
+  // Autofill shortens it, but not below ~1s, so 3.5s keeps real users safe.
+  minFillMs: 3500,
+  // One browser may send once per minute, five times an hour.
+  cooldownMs: 60 * 1000,
+  maxPerHour: 5,
+  // Link-spam payloads carry a dozen URLs; a real enquiry rarely pastes >5.
+  maxLinks: 5,
+  // Phrases that essentially never appear in a genuine enquiry to this site.
+  blocklist: [
+    'seo services', 'guest post', 'guest posting', 'buy backlink', 'link building',
+    'crypto pump', 'pump signal', 'casino', 'viagra', 'loan offer',
+    'bitcoin doubler', 'investment opportunity of a lifetime'
+  ]
+};
+
+const SPAM_LOG_KEY = 'buzz3-contact-log';
+
+function readSpamLog() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SPAM_LOG_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(n => typeof n === 'number') : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeSpamLog(list) {
+  try {
+    localStorage.setItem(SPAM_LOG_KEY, JSON.stringify(list.slice(-20)));
+  } catch (e) {
+    /* private mode / quota — the rate limit simply won't persist */
+  }
+}
+
+function countLinks(text) {
+  return (text.match(/https?:\/\//gi) || []).length + (text.match(/\bwww\./gi) || []).length;
+}
+
+/**
+ * @returns {null|'rate'|'reject'} null = let it through; 'rate' = tell the user
+ * to slow down; 'reject' = generic failure, deliberately indistinguishable from
+ * a network error so a bot can't tell which rule it tripped.
+ */
+function spamCheck(opts) {
+  const now = Date.now();
+  const recent = readSpamLog().filter(t => now - t < 3600 * 1000);
+
+  if (recent.length) {
+    const last = Math.max.apply(null, recent);
+    if (now - last < SPAM_GUARD.cooldownMs || recent.length >= SPAM_GUARD.maxPerHour) {
+      return 'rate';
+    }
+  }
+
+  if (opts.elapsedMs < SPAM_GUARD.minFillMs) return 'reject';
+
+  const body = (opts.message || '').toLowerCase();
+  if (countLinks(body) > SPAM_GUARD.maxLinks) return 'reject';
+  if (SPAM_GUARD.blocklist.some(w => body.indexOf(w) !== -1)) return 'reject';
+
+  return null;
+}
+
+// Turnstile is loaded lazily and only when a site key exists, so an unconfigured
+// site ships zero third-party requests. If the script fails to load we still let
+// the submission through without a token and leave the decision to the endpoint.
+function initTurnstile(container) {
+  if (!SITE_CONFIG.turnstileSiteKey || !container) return;
+  container.hidden = false;
+
+  const render = () => {
+    if (!window.turnstile) return;
+    window.turnstile.render(container, {
+      sitekey: SITE_CONFIG.turnstileSiteKey,
+      theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+    });
+  };
+
+  if (window.turnstile) {
+    render();
+    return;
+  }
+  const s = document.createElement('script');
+  s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  s.async = true;
+  s.defer = true;
+  s.onload = render;
+  document.head.appendChild(s);
+}
+
+function turnstileToken() {
+  try {
+    return window.turnstile && typeof window.turnstile.getResponse === 'function'
+      ? window.turnstile.getResponse() || ''
+      : '';
+  } catch (e) {
+    return '';
+  }
+}
 
 // ===== TOAST =====
 function showToast(message) {
@@ -47,6 +180,13 @@ const translations = {
     'nav.services': 'Services',
     'nav.contact': 'Contact',
     'nav.connectWallet': 'Connect Wallet',
+    'wallet.connecting': 'Connecting…',
+    'wallet.notFound': 'No Wallet Found',
+    'wallet.rejected': 'Request Cancelled',
+    'wallet.failed': 'Connection Failed',
+    'wallet.timeout': 'Wallet Not Responding',
+    'wallet.copied': 'Address Copied',
+    'wallet.copyHint': 'Click to copy address',
     
     // Hero
     'hero.badge': 'AI x Web3 Innovation Hub',
@@ -93,32 +233,51 @@ const translations = {
     // Members
     'members.title': 'Community Members',
     'members.subtitle': 'Meet the brilliant minds driving innovation in our Web3 community',
-    'members.charlie.role': 'Lead Developer',
-    'members.charlie.bio': 'Solidity expert with 8+ years in blockchain development.',
-    'members.sarah.role': 'Research Lead',
-    'members.sarah.bio': 'PhD in Cryptography. ZK proofs researcher.',
-    'members.marcus.role': 'Community Manager',
-    'members.marcus.bio': 'Building bridges between developers and users.',
-    'members.elena.role': 'Smart Contract Auditor',
-    'members.elena.bio': 'Security specialist. Audited 100+ smart contracts.',
+    // Roles and bios must stay in sync with the member cards in index.html.
+    // That markup is only a fallback: setLanguage() overwrites every
+    // [data-i18n] node on load, so whatever is written here is what visitors
+    // actually read. Editing index.html alone changes nothing on the page.
+    'members.charlie-li.role': 'Strategic Lead',
+    'members.charlie-li.bio': 'Leads the design and delivery of Web3 solutions, bridging technical architecture with product strategy and business requirements.',
+    'members.linyang.role': 'Research Lead',
+    'members.linyang.bio': 'Leads research and strategic initiatives across Web3 and AI, with a focus on emerging technologies, market trends, and practical product applications.',
+    'members.duchao.role': 'AI Lead',
+    'members.duchao.bio': 'Leads AI-related technology and product development, with extensive experience across the Web3 ecosystem.',
+    'members.naito-y.role': 'Community Manager',
+    'members.naito-y.bio': 'Builds and manages relationships between developers, users, and the broader Web3 ecosystem. Focuses on community growth and developer engagement.',
     'members.viewAll': 'View All Members',
     
     // Events
     'events.title': 'Past Events',
     'events.subtitle': 'Highlights from our community gatherings and milestones',
-    'events.event1.date': 'March 2026',
-    'events.event1.title': 'AI x Web3 Summit 2026',
-    'events.event1.desc': 'Our flagship annual conference bringing together 500+ developers for workshops, keynotes, and hackathons.',
-    'events.event1.attendees': '500+ Attendees',
-    'events.event2.date': 'November 2025',
-    'events.event2.title': 'DeFi AI Hackathon',
-    'events.event2.desc': '48-hour hackathon challenging teams to build AI-powered DeFi protocols. $100K in prizes.',
-    'events.event2.attendees': '200+ Participants',
-    'events.event2.location': 'Virtual Event',
-    'events.event3.date': 'October 2024',
-    'events.event3.title': 'Buzz3 Genesis Meetup',
-    'events.event3.desc': 'Our founding event that brought together the initial 50 members.',
-    'events.event3.attendees': '50 Founding Members',
+    'events.event1.date': 'July 2026',
+    'events.event1.title': 'Summer of Ethereum 2026 · Tokyo',
+    'events.event1.desc': 'An afternoon of Ethereum ecosystem talks and workshops in Marunouchi, co-hosted with ETHPanda, LXDAO, JLinkAI and imToken.',
+    'events.event1.attendees': '5 Co-hosts',
+    'events.event1.location': 'Tokyo Innovation Base',
+    'events.event1.photoAlt': 'Summer of Ethereum 2026 Tokyo — event poster with a Tokyo skyline illustration',
+    'events.event2.date': 'March 2026',
+    'events.event2.title': 'AI x Web3 Summit 2026',
+    'events.event2.desc': 'Our flagship annual conference bringing together 500+ developers for workshops, keynotes, and hackathons.',
+    'events.event2.attendees': '500+ Attendees',
+    'events.event2.location': 'San Francisco',
+    'events.event2.photoAlt': 'AI x Web3 Summit 2026 — attendees at the keynote',
+    'events.event3.date': 'November 2025',
+    'events.event3.title': 'DeFi AI Hackathon',
+    'events.event3.desc': '48-hour hackathon challenging teams to build AI-powered DeFi protocols. $100K in prizes.',
+    'events.event3.attendees': '200+ Participants',
+    'events.event3.location': 'Virtual Event',
+    'events.event3.photoAlt': 'DeFi AI Hackathon — teams presenting their prototypes',
+    'events.event4.date': 'October 2024',
+    'events.event4.title': 'Buzz3 Genesis Meetup',
+    'events.event4.desc': 'Our founding event that brought together the initial 50 members.',
+    'events.event4.attendees': '50 Founding Members',
+    'events.event4.location': 'Tokyo, Japan',
+    'events.event4.photoAlt': 'Buzz3 Genesis Meetup — the founding members in Tokyo',
+
+    // Photo lightbox
+    'lightbox.label': 'Event photo',
+    'lightbox.close': 'Close photo',
     
     // Services
     'services.title': 'Web3 Consulting Services',
@@ -170,7 +329,46 @@ const translations = {
     'typing.2': 'Decentralized Future',
     'typing.3': 'Blockchain Excellence',
     'typing.4': 'Web3 Pioneer Network',
-    'typing.5': 'Smart Contract Security'
+    'typing.5': 'Smart Contract Security',
+
+    // Contact modal
+    'contact.openBtn': 'Contact Us',
+    'contact.eyebrow': 'Get in touch',
+    'contact.title': 'Contact Us',
+    'contact.subtitle': 'Tell us what you\'re building — we usually reply within 2 business days.',
+    'contact.name': 'Name',
+    'contact.namePh': 'Your name',
+    'contact.email': 'Email',
+    'contact.emailPh': 'you@example.com',
+    'contact.org': 'Company / Project',
+    'contact.orgPh': 'Optional',
+    'contact.topic': 'Topic',
+    'contact.topic.general': 'General enquiry',
+    'contact.topic.partnership': 'Partnership',
+    'contact.topic.consulting': 'Consulting / Development',
+    'contact.topic.media': 'Media / Speaking',
+    'contact.topic.other': 'Other',
+    'contact.message': 'Message',
+    'contact.messagePh': 'A few lines about your project or question…',
+    'contact.privacy': 'We only use your details to reply. No newsletters, no sharing.',
+    'contact.submit': 'Send message',
+    'contact.sending': 'Sending…',
+    'contact.successTitle': 'Message sent',
+    'contact.successDesc': 'Thanks for reaching out — we\'ll get back to you shortly.',
+    'contact.errRequired': 'This field is required',
+    'contact.errEmail': 'Please enter a valid email address',
+    'contact.errSend': 'Could not send — please try again later.',
+    'contact.errRate': 'You just sent a message. Please wait a moment before sending another.',
+    'contact.errNoEndpoint': 'The contact form is not connected to a backend yet.',
+
+    // Telegram QR card
+    'tg.title': 'Join us on Telegram',
+    'tg.sub': 'Scan the QR code to join the community',
+    'tg.note': 'Point your camera at the code',
+    'tg.copy': 'Copy link',
+    'tg.copied': 'Link copied',
+    'tg.open': 'Open in Telegram',
+    'tg.unset': 'Telegram link not configured yet'
   },
   
   zh: {
@@ -183,6 +381,13 @@ const translations = {
     'nav.services': '服务',
     'nav.contact': '联系我们',
     'nav.connectWallet': '连接钱包',
+    'wallet.connecting': '连接中…',
+    'wallet.notFound': '未检测到钱包',
+    'wallet.rejected': '已取消请求',
+    'wallet.failed': '连接失败',
+    'wallet.timeout': '钱包无响应',
+    'wallet.copied': '地址已复制',
+    'wallet.copyHint': '点击复制地址',
     
     // Hero
     'hero.badge': 'AI x Web3 创新中心',
@@ -229,32 +434,47 @@ const translations = {
     // Members
     'members.title': '社区成员',
     'members.subtitle': '认识推动我们 Web3 社区创新的杰出人才',
-    'members.charlie.role': '首席开发者',
-    'members.charlie.bio': 'Solidity 专家，8+ 年区块链开发经验。',
-    'members.sarah.role': '研究主管',
-    'members.sarah.bio': '密码学博士。ZK 证明研究员。',
-    'members.marcus.role': '社区经理',
-    'members.marcus.bio': '连接开发者和用户的桥梁。',
-    'members.elena.role': '智能合约审计师',
-    'members.elena.bio': '安全专家。已审计 100+ 智能合约。',
+    'members.charlie-li.role': '战略负责人',
+    'members.charlie-li.bio': '主导 Web3 解决方案的设计与交付，衔接技术架构、产品策略与业务需求。',
+    'members.linyang.role': '研究主管',
+    'members.linyang.bio': '主导 Web3 与 AI 领域的研究与战略项目，聚焦新兴技术、市场趋势与实际产品落地。',
+    'members.duchao.role': 'AI 负责人',
+    'members.duchao.bio': '主导 AI 相关技术与产品研发，在 Web3 生态拥有丰富经验。',
+    'members.naito-y.role': '社区经理',
+    'members.naito-y.bio': '建立并维护开发者、用户与更广泛 Web3 生态之间的联系，专注社区增长与开发者互动。',
     'members.viewAll': '查看所有成员',
     
     // Events
     'events.title': '过往活动',
     'events.subtitle': '社区聚会和里程碑的精彩回顾',
-    'events.event1.date': '2026 年 3 月',
-    'events.event1.title': 'AI x Web3 峰会 2026',
-    'events.event1.desc': '我们的旗舰年度会议，汇集 500+ 开发者参加研讨会、主题演讲和黑客马拉松。',
-    'events.event1.attendees': '500+ 参与者',
-    'events.event2.date': '2025 年 11 月',
-    'events.event2.title': 'DeFi AI 黑客马拉松',
-    'events.event2.desc': '48 小时黑客马拉松，挑战团队构建 AI 驱动的 DeFi 协议。10 万美元奖金。',
-    'events.event2.attendees': '200+ 参与者',
-    'events.event2.location': '线上活动',
-    'events.event3.date': '2024 年 10 月',
-    'events.event3.title': 'Buzz3 创世聚会',
-    'events.event3.desc': '我们的创始活动，汇集了最初的 50 位成员。',
-    'events.event3.attendees': '50 位创始成员',
+    'events.event1.date': '2026 年 7 月',
+    'events.event1.title': '以太坊之夏 2026 · 东京站',
+    'events.event1.desc': '在丸之内举办的以太坊生态分享与工作坊，由 ETHPanda、LXDAO、JLinkAI、imToken 联合主办。',
+    'events.event1.attendees': '5 家联合主办',
+    'events.event1.location': '东京创新基地',
+    'events.event1.photoAlt': '以太坊之夏 2026 东京站 —— 含东京天际线插画的活动海报',
+    'events.event2.date': '2026 年 3 月',
+    'events.event2.title': 'AI x Web3 峰会 2026',
+    'events.event2.desc': '我们的旗舰年度会议，汇集 500+ 开发者参加研讨会、主题演讲和黑客马拉松。',
+    'events.event2.attendees': '500+ 参与者',
+    'events.event2.location': '旧金山',
+    'events.event2.photoAlt': 'AI x Web3 峰会 2026 —— 主题演讲现场',
+    'events.event3.date': '2025 年 11 月',
+    'events.event3.title': 'DeFi AI 黑客马拉松',
+    'events.event3.desc': '48 小时黑客马拉松，挑战团队构建 AI 驱动的 DeFi 协议。10 万美元奖金。',
+    'events.event3.attendees': '200+ 参与者',
+    'events.event3.location': '线上活动',
+    'events.event3.photoAlt': 'DeFi AI 黑客马拉松 —— 团队在展示他们的作品',
+    'events.event4.date': '2024 年 10 月',
+    'events.event4.title': 'Buzz3 创世聚会',
+    'events.event4.desc': '我们的创始活动，汇集了最初的 50 位成员。',
+    'events.event4.attendees': '50 位创始成员',
+    'events.event4.location': '日本 · 东京',
+    'events.event4.photoAlt': 'Buzz3 创世聚会 —— 创始成员在东京',
+
+    // Photo lightbox
+    'lightbox.label': '活动照片',
+    'lightbox.close': '关闭照片',
     
     // Services
     'services.title': 'Web3 咨询服务',
@@ -306,7 +526,46 @@ const translations = {
     'typing.2': '去中心化未来',
     'typing.3': '区块链卓越',
     'typing.4': 'Web3 先锋网络',
-    'typing.5': '智能合约安全'
+    'typing.5': '智能合约安全',
+
+    // Contact modal
+    'contact.openBtn': '联系我们',
+    'contact.eyebrow': '欢迎联络',
+    'contact.title': '联系我们',
+    'contact.subtitle': '告诉我们你在做什么 —— 我们通常会在两个工作日内回复。',
+    'contact.name': '姓名',
+    'contact.namePh': '你的称呼',
+    'contact.email': '邮箱',
+    'contact.emailPh': 'you@example.com',
+    'contact.org': '公司 / 项目',
+    'contact.orgPh': '选填',
+    'contact.topic': '咨询类型',
+    'contact.topic.general': '一般咨询',
+    'contact.topic.partnership': '合作洽谈',
+    'contact.topic.consulting': '咨询 / 开发',
+    'contact.topic.media': '媒体 / 演讲',
+    'contact.topic.other': '其他',
+    'contact.message': '留言',
+    'contact.messagePh': '简单描述一下你的项目或问题…',
+    'contact.privacy': '你的信息仅用于回复，不会用于推送或对外提供。',
+    'contact.submit': '发送',
+    'contact.sending': '发送中…',
+    'contact.successTitle': '已发送',
+    'contact.successDesc': '感谢联系，我们会尽快回复你。',
+    'contact.errRequired': '此项为必填',
+    'contact.errEmail': '请输入有效的邮箱地址',
+    'contact.errSend': '发送失败，请稍后再试。',
+    'contact.errRate': '你刚刚已经发送过一条消息，请稍等一会儿再发。',
+    'contact.errNoEndpoint': '联系表单尚未接入后端。',
+
+    // Telegram QR card
+    'tg.title': '加入我们的 Telegram',
+    'tg.sub': '扫码加入社群',
+    'tg.note': '用相机扫描二维码',
+    'tg.copy': '复制链接',
+    'tg.copied': '链接已复制',
+    'tg.open': '在 Telegram 中打开',
+    'tg.unset': 'Telegram 链接尚未配置'
   },
   
   ja: {
@@ -319,6 +578,13 @@ const translations = {
     'nav.services': 'サービス',
     'nav.contact': 'お問い合わせ',
     'nav.connectWallet': 'ウォレット接続',
+    'wallet.connecting': '接続中…',
+    'wallet.notFound': 'ウォレット未検出',
+    'wallet.rejected': 'リクエストをキャンセルしました',
+    'wallet.failed': '接続に失敗しました',
+    'wallet.timeout': 'ウォレットが応答しません',
+    'wallet.copied': 'アドレスをコピーしました',
+    'wallet.copyHint': 'クリックしてアドレスをコピー',
     
     // Hero
     'hero.badge': 'AI x Web3 イノベーションハブ',
@@ -364,33 +630,48 @@ const translations = {
     
     // Members
     'members.title': 'コミュニティメンバー',
-    'members.subtitle': '私たちの Web3 コミュニティのイノベーションを推進する brilliant minds をご紹介',
-    'members.charlie.role': 'リード開発者',
-    'members.charlie.bio': 'Solidity エキスパート。8 年以上のブロックチェーン開発経験。',
-    'members.sarah.role': 'リサーチリード',
-    'members.sarah.bio': '暗号学の博士号。ZK 証明の研究者。',
-    'members.marcus.role': 'コミュニティマネージャー',
-    'members.marcus.bio': '開発者とユーザーの架け橋。',
-    'members.elena.role': 'スマートコントラクト監査士',
-    'members.elena.bio': 'セキュリティスペシャリスト。100 以上のスマートコントラクトを監査。',
+    'members.subtitle': '私たちの Web3 コミュニティでイノベーションを推進するメンバーをご紹介',
+    'members.charlie-li.role': 'ストラテジックリード',
+    'members.charlie-li.bio': 'Web3 ソリューションの設計と提供を主導し、技術アーキテクチャとプロダクト戦略・ビジネス要件をつなぎます。',
+    'members.linyang.role': 'リサーチリード',
+    'members.linyang.bio': 'Web3 と AI 領域のリサーチおよび戦略的取り組みを主導。新興技術、市場トレンド、実用的なプロダクト応用に注力しています。',
+    'members.duchao.role': 'AI リード',
+    'members.duchao.bio': 'AI 関連の技術およびプロダクト開発を主導。Web3 エコシステムにおける豊富な経験を持ちます。',
+    'members.naito-y.role': 'コミュニティマネージャー',
+    'members.naito-y.bio': '開発者、ユーザー、そしてより広い Web3 エコシステムとの関係を構築・運営。コミュニティの成長と開発者エンゲージメントに注力しています。',
     'members.viewAll': '全メンバーを見る',
     
     // Events
     'events.title': '過去のイベント',
     'events.subtitle': 'コミュニティの集まりとマイルストーンのハイライト',
-    'events.event1.date': '2026 年 3 月',
-    'events.event1.title': 'AI x Web3 サミット 2026',
-    'events.event1.desc': '500 以上の開発者を集める年次カンファレンス。ワークショップ、基調講演、ハッカソン。',
-    'events.event1.attendees': '500 以上の参加者',
-    'events.event2.date': '2025 年 11 月',
-    'events.event2.title': 'DeFi AI ハッカソン',
-    'events.event2.desc': 'AI 駆動の DeFi プロトコル構築に挑戦する 48 時間ハッカソン。賞金 10 万ドル。',
-    'events.event2.attendees': '200 以上の参加者',
-    'events.event2.location': 'バーチャルイベント',
-    'events.event3.date': '2024 年 10 月',
-    'events.event3.title': 'Buzz3 ジェネシスミートアップ',
-    'events.event3.desc': '初期メンバー 50 人を集めた設立イベント。',
-    'events.event3.attendees': '50 人の創設メンバー',
+    'events.event1.date': '2026 年 7 月',
+    'events.event1.title': 'イーサリアムの夏 2026 · 東京',
+    'events.event1.desc': '丸の内で開催されたイーサリアム・エコシステムのトークとワークショップ。ETHPanda、LXDAO、JLinkAI、imToken との共催。',
+    'events.event1.attendees': '5 社共催',
+    'events.event1.location': 'Tokyo Innovation Base',
+    'events.event1.photoAlt': 'イーサリアムの夏 2026 東京 — 東京の街並みのイラスト入りイベントポスター',
+    'events.event2.date': '2026 年 3 月',
+    'events.event2.title': 'AI x Web3 サミット 2026',
+    'events.event2.desc': '500 以上の開発者を集める年次カンファレンス。ワークショップ、基調講演、ハッカソン。',
+    'events.event2.attendees': '500 以上の参加者',
+    'events.event2.location': 'サンフランシスコ',
+    'events.event2.photoAlt': 'AI x Web3 サミット 2026 — 基調講演の会場',
+    'events.event3.date': '2025 年 11 月',
+    'events.event3.title': 'DeFi AI ハッカソン',
+    'events.event3.desc': 'AI 駆動の DeFi プロトコル構築に挑戦する 48 時間ハッカソン。賞金 10 万ドル。',
+    'events.event3.attendees': '200 以上の参加者',
+    'events.event3.location': 'バーチャルイベント',
+    'events.event3.photoAlt': 'DeFi AI ハッカソン — 作品を発表するチーム',
+    'events.event4.date': '2024 年 10 月',
+    'events.event4.title': 'Buzz3 ジェネシスミートアップ',
+    'events.event4.desc': '初期メンバー 50 人を集めた設立イベント。',
+    'events.event4.attendees': '50 人の創設メンバー',
+    'events.event4.location': '日本・東京',
+    'events.event4.photoAlt': 'Buzz3 ジェネシスミートアップ — 東京の創設メンバー',
+
+    // Photo lightbox
+    'lightbox.label': 'イベント写真',
+    'lightbox.close': '写真を閉じる',
     
     // Services
     'services.title': 'Web3 コンサルティングサービス',
@@ -442,7 +723,46 @@ const translations = {
     'typing.2': '分散型の未来',
     'typing.3': 'ブロックチェーンの卓越性',
     'typing.4': 'Web3 パイオニアネットワーク',
-    'typing.5': 'スマートコントラクトセキュリティ'
+    'typing.5': 'スマートコントラクトセキュリティ',
+
+    // Contact modal
+    'contact.openBtn': 'お問い合わせ',
+    'contact.eyebrow': 'お気軽にご連絡ください',
+    'contact.title': 'お問い合わせ',
+    'contact.subtitle': '取り組み内容をお聞かせください。通常 2 営業日以内にご返信します。',
+    'contact.name': 'お名前',
+    'contact.namePh': 'お名前を入力',
+    'contact.email': 'メールアドレス',
+    'contact.emailPh': 'you@example.com',
+    'contact.org': '会社 / プロジェクト',
+    'contact.orgPh': '任意',
+    'contact.topic': 'お問い合わせ種別',
+    'contact.topic.general': '一般的なお問い合わせ',
+    'contact.topic.partnership': 'パートナーシップ',
+    'contact.topic.consulting': 'コンサルティング / 開発',
+    'contact.topic.media': 'メディア / 登壇',
+    'contact.topic.other': 'その他',
+    'contact.message': 'メッセージ',
+    'contact.messagePh': 'プロジェクトやご質問について簡単にご記入ください…',
+    'contact.privacy': 'ご入力いただいた情報は返信のみに使用します。',
+    'contact.submit': '送信する',
+    'contact.sending': '送信中…',
+    'contact.successTitle': '送信しました',
+    'contact.successDesc': 'お問い合わせありがとうございます。折り返しご連絡いたします。',
+    'contact.errRequired': '必須項目です',
+    'contact.errEmail': '有効なメールアドレスを入力してください',
+    'contact.errSend': '送信に失敗しました。後でもう一度お試しください。',
+    'contact.errRate': '先ほど送信済みです。少し時間をおいてからもう一度お試しください。',
+    'contact.errNoEndpoint': 'お問い合わせフォームは未接続です。',
+
+    // Telegram QR card
+    'tg.title': 'Telegram に参加',
+    'tg.sub': 'QR コードを読み取ってコミュニティに参加',
+    'tg.note': 'カメラでコードを読み取ってください',
+    'tg.copy': 'リンクをコピー',
+    'tg.copied': 'コピーしました',
+    'tg.open': 'Telegram で開く',
+    'tg.unset': 'Telegram リンクが未設定です'
   }
 };
 
@@ -462,12 +782,18 @@ function setLanguage(lang) {
     }
   });
   
-  // Update placeholders
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-    const key = el.getAttribute('data-i18n-placeholder');
-    if (translations[lang] && translations[lang][key]) {
-      el.placeholder = translations[lang][key];
-    }
+  // Attribute-level i18n. textContent alone can't translate alt text, aria
+  // labels or placeholders, and the event photos need a translated alt.
+  [['data-i18n-placeholder', 'placeholder'],
+   ['data-i18n-alt', 'alt'],
+   ['data-i18n-aria-label', 'aria-label'],
+   ['data-i18n-title', 'title']].forEach(([attr, prop]) => {
+    document.querySelectorAll('[' + attr + ']').forEach(el => {
+      const key = el.getAttribute(attr);
+      if (translations[lang] && translations[lang][key]) {
+        el.setAttribute(prop, translations[lang][key]);
+      }
+    });
   });
   
   // Update typing texts
@@ -490,6 +816,9 @@ function setLanguage(lang) {
 
   // Re-split hero title chars after i18n update
   splitHeroTitle();
+
+  // QR alt text + "not configured" copy are injected by JS, not data-i18n
+  if (typeof refreshTelegramCard === 'function') refreshTelegramCard();
 }
 
 // ===== THEME SYSTEM =====
@@ -1193,8 +1522,9 @@ if (!prefersReducedMotion) {
 }
 
 // ===== BEE LOGO INTERACTION =====
-const beeLogo = document.querySelector('.footer-logo-img');
-if (beeLogo) {
+// Two marks exist (one per theme), so bind to every instance — only the
+// visible one can receive events, but both need the listeners.
+document.querySelectorAll('.footer-logo-img').forEach(beeLogo => {
   let clickCount = 0;
   
   beeLogo.addEventListener('click', (e) => {
@@ -1256,7 +1586,7 @@ if (beeLogo) {
   beeLogo.addEventListener('mouseleave', () => {
     beeLogo.style.transform = '';
   });
-}
+});
 
 // ===== HERO TITLE CHAR ANIMATION =====
 function splitHeroTitle() {
@@ -1370,67 +1700,154 @@ function initWalletConnect() {
   const btn = document.getElementById('walletBtn');
   if (!btn) return;
 
+  // The button is hidden on purpose (<html data-wallet="off">) because this is
+  // a static site with no dApp to connect to. Bail out before wiring anything:
+  // a hidden button must not run an eth_accounts probe on every page load or
+  // hold listeners. Flip the attribute to "on" and everything below resumes.
+  if (document.documentElement.getAttribute('data-wallet') === 'off') return;
+
   const textEl = btn.querySelector('.wallet-text');
   if (!textEl) return;
 
-  function t(en, zh, ja) {
-    const lang = localStorage.getItem('buzz3-lang') || 'en';
-    return lang === 'zh' ? zh : lang === 'ja' ? ja : en;
+  // A wallet popup can sit open for ever if the extension is wedged or the
+  // user walks away. Without a ceiling the button stays on "Connecting…"
+  // indefinitely -- and since the click handler bails out while that state is
+  // set, the button is then permanently dead until the page is reloaded.
+  const REQUEST_TIMEOUT_MS = 60000;
+  const NOTICE_MS = 3200;
+
+  let address = '';
+  let noticeTimer = null;
+
+  function provider() {
+    const eth = window.ethereum;
+    if (!eth) return null;
+    // Wallets that all inject into window.ethereum announce themselves here
+    // (the legacy multi-provider convention). Prefer MetaMask when present,
+    // otherwise take the first one rather than assuming the plain object.
+    if (Array.isArray(eth.providers) && eth.providers.length) {
+      return eth.providers.find(p => p && p.isMetaMask) || eth.providers[0];
+    }
+    return eth;
   }
 
-  function shortAddr(addr) {
-    return addr.slice(0, 6) + '...' + addr.slice(-4);
+  function shortAddr(a) {
+    return a.slice(0, 6) + '...' + a.slice(-4);
   }
 
-  function setConnected(addr) {
+  function setText(key, fallback) {
     textEl.removeAttribute('data-i18n');
-    textEl.innerHTML = '<span class="wallet-address"></span>';
-    textEl.querySelector('.wallet-address').textContent = shortAddr(addr);
-    btn.dataset.state = 'connected';
+    textEl.textContent = t(key) || fallback;
   }
 
   function setDefault() {
+    clearTimeout(noticeTimer);
+    address = '';
     btn.dataset.state = 'default';
+    btn.removeAttribute('data-i18n-title');
+    btn.removeAttribute('title');
     textEl.setAttribute('data-i18n', 'nav.connectWallet');
-    textEl.textContent = t('Connect Wallet', '连接钱包', 'ウォレット接続');
+    textEl.textContent = t('nav.connectWallet') || 'Connect Wallet';
   }
 
-  // Restore an already-authorized session without prompting.
-  if (window.ethereum) {
-    window.ethereum.request({ method: 'eth_accounts' })
+  function setConnected(addr) {
+    clearTimeout(noticeTimer);
+    address = addr;
+    btn.dataset.state = 'connected';
+    // routed through data-i18n-title so a language switch retranslates it for
+    // free, instead of leaving a stale tooltip behind
+    btn.setAttribute('data-i18n-title', 'wallet.copyHint');
+    btn.title = t('wallet.copyHint') || '';
+    textEl.removeAttribute('data-i18n');
+    textEl.innerHTML = '<span class="wallet-address"></span>';
+    textEl.querySelector('.wallet-address').textContent = shortAddr(addr);
+  }
+
+  // Show a transient message, then settle back to the real state. Clearing the
+  // pending timer first stops rapid clicks from stacking resets.
+  function notice(key, fallback) {
+    clearTimeout(noticeTimer);
+    setText(key, fallback);
+    btn.dataset.state = address ? 'connected' : 'default';
+    noticeTimer = setTimeout(() => {
+      if (address) setConnected(address); else setDefault();
+    }, NOTICE_MS);
+  }
+
+  function withTimeout(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+    ]);
+  }
+
+  // Once connected the button becomes "copy my address". Without this it is a
+  // control that stops responding the moment it succeeds, which reads as the
+  // very bug we are fixing.
+  function copyAddress() {
+    const done = () => notice('wallet.copied', 'Address Copied');
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(address).then(done).catch(done);
+      return;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = address;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* clipboard blocked */ }
+    ta.remove();
+    done();
+  }
+
+  // Restore an already-authorised session without prompting.
+  const eth = provider();
+  if (eth) {
+    eth.request({ method: 'eth_accounts' })
       .then(accounts => { if (accounts && accounts.length) setConnected(accounts[0]); })
       .catch(() => {});
 
-    window.ethereum.on?.('accountsChanged', accounts => {
+    eth.on?.('accountsChanged', accounts => {
       if (accounts && accounts.length) setConnected(accounts[0]);
       else setDefault();
     });
+
+    // A wallet that locks or is uninstalled mid-session fires this, not
+    // accountsChanged -- without it the navbar keeps showing a dead address.
+    eth.on?.('disconnect', () => setDefault());
   }
 
   btn.addEventListener('click', async () => {
-    if (btn.dataset.state === 'connected' || btn.dataset.state === 'loading') return;
+    if (btn.dataset.state === 'loading') return;
 
-    if (!window.ethereum) {
-      textEl.removeAttribute('data-i18n');
-      textEl.textContent = t('No Wallet Found', '未检测到钱包', 'ウォレット未検出');
-      setTimeout(setDefault, 2500);
+    if (btn.dataset.state === 'connected') {
+      copyAddress();
+      return;
+    }
+
+    const eth = provider();
+    if (!eth) {
+      notice('wallet.notFound', 'No Wallet Found');
       return;
     }
 
     btn.dataset.state = 'loading';
-    textEl.removeAttribute('data-i18n');
-    textEl.textContent = t('Connecting...', '连接中...', '接続中...');
+    setText('wallet.connecting', 'Connecting…');
 
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      if (accounts && accounts.length) {
-        setConnected(accounts[0]);
-      } else {
-        setDefault();
-      }
+      const accounts = await withTimeout(
+        eth.request({ method: 'eth_requestAccounts' }), REQUEST_TIMEOUT_MS
+      );
+      if (accounts && accounts.length) setConnected(accounts[0]);
+      else setDefault();
     } catch (err) {
-      // 4001 = user rejected the request
-      setDefault();
+      // 4001 = the user dismissed the wallet popup. That is a normal choice,
+      // not a failure, so it gets its own wording rather than looking broken.
+      const code = err && (err.code || (err.data && err.data.originalError && err.data.originalError.code));
+      if (String(code) === '4001') notice('wallet.rejected', 'Request Cancelled');
+      else if (err && err.message === 'timeout') notice('wallet.timeout', 'Wallet Not Responding');
+      else notice('wallet.failed', 'Connection Failed');
     }
   });
 }
@@ -1595,7 +2012,10 @@ function initStatRings() {
       if (entry.isIntersecting) {
         const el = entry.target;
         const target = parseFloat(el.dataset.ringTarget || '0.5');
-        const circumference = 157.08;
+        // Read the dash length back from CSS instead of hard-coding it, so
+        // resizing the ring in stylesheet-land doesn't silently break the
+        // sweep. 157.08 is the historical 2*pi*25 fallback.
+        const circumference = parseFloat(getComputedStyle(el).strokeDasharray) || 157.08;
         const offset = circumference * (1 - target);
         requestAnimationFrame(() => {
           el.style.strokeDashoffset = offset;
@@ -1723,6 +2143,506 @@ function initParallax() {
   }, { passive: true });
 }
 
+// ===== TELEGRAM QR CARD =====
+function t(key) {
+  const dict = translations[currentLang] || translations.en;
+  return dict[key] !== undefined ? dict[key] : translations.en[key];
+}
+
+function telegramUrl() {
+  return (SITE_CONFIG.socials.telegram || '').trim();
+}
+
+// Renders the QR straight from SITE_CONFIG.socials.telegram, so the code can
+// never drift out of sync with the link. Falls back to an honest "not
+// configured" state rather than showing a QR that points nowhere.
+function refreshTelegramCard() {
+  const card = document.getElementById('tgCard');
+  const qrEl = document.getElementById('tgQr');
+  if (!card || !qrEl) return;
+
+  const url = telegramUrl();
+
+  // wire every Telegram link on the page
+  document.querySelectorAll('[data-telegram-link]').forEach(el => {
+    if (url) {
+      el.setAttribute('href', url);
+      el.removeAttribute('aria-disabled');
+    } else {
+      el.setAttribute('href', '#');
+      el.setAttribute('aria-disabled', 'true');
+    }
+  });
+
+  const note = document.getElementById('tgQrNote');
+  if (note) note.textContent = url ? t('tg.note') : t('tg.unset');
+
+  if (!url || typeof qrcode !== 'function') {
+    card.dataset.state = 'unset';
+    qrEl.innerHTML = '';
+    qrEl.textContent = t('tg.unset');
+    return;
+  }
+
+  try {
+    // ECC level 'H' (30% codeword recovery) is required because a Telegram
+    // badge is overlaid on the centre of the code — the badge destroys modules
+    // there, and only H has enough redundancy to reconstruct them. At 'M'
+    // (15%) the same overlay makes the code unscannable. Verified by decoding
+    // the rendered SVG from a screenshot.
+    const qr = qrcode(0, 'H');
+    qr.addData(url);
+    qr.make();
+    qrEl.innerHTML = qr.createSvgTag({
+      cellSize: 4,
+      margin: 2,
+      scalable: true,
+      title: t('tg.title'),
+      alt: t('tg.sub')
+    });
+    card.dataset.state = 'ready';
+  } catch (err) {
+    card.dataset.state = 'unset';
+    qrEl.innerHTML = '';
+    qrEl.textContent = t('tg.unset');
+  }
+}
+
+function initTelegramQR() {
+  const card = document.getElementById('tgCard');
+  if (!card) return;
+
+  refreshTelegramCard();
+
+  const copyBtn = document.getElementById('tgCopyBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const url = telegramUrl();
+      if (!url) {
+        showToast(t('tg.unset'));
+        return;
+      }
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        const original = copyBtn.textContent;
+        copyBtn.textContent = t('tg.copied');
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = original;
+          copyBtn.classList.remove('copied');
+        }, 1800);
+      } catch (err) {
+        showToast(t('tg.unset'));
+      }
+    });
+  }
+
+  // clicking the code itself opens the link
+  const qrEl = document.getElementById('tgQr');
+  if (qrEl) {
+    qrEl.style.cursor = 'pointer';
+    qrEl.addEventListener('click', () => {
+      const url = telegramUrl();
+      if (url) window.open(url, '_blank', 'noopener');
+    });
+  }
+}
+
+// ===== CONTACT MODAL =====
+function initContactModal() {
+  const modal = document.getElementById('contactModal');
+  if (!modal) return;
+
+  const panel = modal.querySelector('.modal-panel');
+  const form = document.getElementById('contactForm');
+  const success = document.getElementById('contactSuccess');
+  const submitBtn = form ? form.querySelector('.modal-submit') : null;
+  let lastFocused = null;
+  let closeTimer = null;
+  // Stamped on every open. The gap between this and the submit is the cheapest
+  // bot signal there is: a script posts the form milliseconds after it appears.
+  let openedAt = 0;
+
+  if (form) initTurnstile(form.querySelector('#cfTurnstile'));
+
+  function focusables() {
+    return Array.from(
+      panel.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter(el => el.offsetParent !== null);
+  }
+
+  function openModal() {
+    clearTimeout(closeTimer);
+    lastFocused = document.activeElement;
+    openedAt = Date.now();
+    modal.hidden = false;
+    // force a reflow so the open transition actually runs
+    void modal.offsetWidth;
+    modal.classList.add('is-open');
+    document.body.classList.add('modal-open');
+
+    const first = form && form.querySelector('input:not([type="hidden"]):not([tabindex="-1"])');
+    if (first) setTimeout(() => first.focus(), 120);
+    else panel.focus();
+  }
+
+  function closeModal() {
+    modal.classList.remove('is-open');
+    document.body.classList.remove('modal-open');
+    closeTimer = setTimeout(() => {
+      modal.hidden = true;
+      if (form && success) {
+        form.hidden = false;
+        success.hidden = true;
+      }
+      if (lastFocused && lastFocused.focus) lastFocused.focus();
+    }, 300);
+  }
+
+  document.querySelectorAll('[data-contact-open]').forEach(btn => {
+    btn.addEventListener('click', openModal);
+  });
+
+  modal.querySelectorAll('[data-contact-close]').forEach(el => {
+    el.addEventListener('click', closeModal);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (modal.hidden) return;
+    if (e.key === 'Escape') {
+      closeModal();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
+
+  if (!form) return;
+
+  function setError(input, message) {
+    input.classList.add('invalid');
+    const slot = form.querySelector('[data-error-for="' + input.id + '"]');
+    if (slot) slot.textContent = message;
+    input.setAttribute('aria-invalid', 'true');
+  }
+
+  function clearError(input) {
+    input.classList.remove('invalid');
+    const slot = form.querySelector('[data-error-for="' + input.id + '"]');
+    if (slot) slot.textContent = '';
+    input.removeAttribute('aria-invalid');
+  }
+
+  form.querySelectorAll('input, textarea').forEach(el => {
+    el.addEventListener('input', () => clearError(el));
+  });
+
+  function validate() {
+    let ok = true;
+    let firstBad = null;
+    const name = form.querySelector('#cfName');
+    const email = form.querySelector('#cfEmail');
+    const message = form.querySelector('#cfMessage');
+
+    [name, message].forEach(el => {
+      clearError(el);
+      if (!el.value.trim()) {
+        setError(el, t('contact.errRequired'));
+        ok = false;
+        firstBad = firstBad || el;
+      }
+    });
+
+    clearError(email);
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
+    if (!email.value.trim()) {
+      setError(email, t('contact.errRequired'));
+      ok = false;
+      firstBad = firstBad || email;
+    } else if (!emailOk) {
+      setError(email, t('contact.errEmail'));
+      ok = false;
+      firstBad = firstBad || email;
+    }
+
+    if (firstBad) firstBad.focus();
+    return ok;
+  }
+
+  function setBusy(busy) {
+    if (!submitBtn) return;
+    if (busy) {
+      submitBtn.dataset.idleLabel = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = t('contact.sending');
+    } else {
+      submitBtn.disabled = false;
+      if (submitBtn.dataset.idleLabel) submitBtn.textContent = submitBtn.dataset.idleLabel;
+    }
+  }
+
+  function showSuccess() {
+    form.reset();
+    form.hidden = true;
+    if (success) success.hidden = false;
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+
+    // ---- layer 1: honeypot -------------------------------------------------
+    // Hidden from humans, irresistible to form-filling bots. Answered with a
+    // fake success on purpose: the sender learns nothing, so it keeps posting
+    // into a void instead of probing for a way through.
+    const trap = form.querySelector('#cfWebsite');
+    if (trap && trap.value) {
+      showSuccess();
+      return;
+    }
+
+    if (!validate()) return;
+
+    const message = form.querySelector('#cfMessage').value.trim();
+
+    // A missing endpoint is a configuration error, not a spam verdict, so it is
+    // reported as itself — otherwise every attempt during setup would show the
+    // generic "could not send" and hide the real reason.
+    if (!SITE_CONFIG.formEndpoint) {
+      showToast(t('contact.errNoEndpoint'));
+      return;
+    }
+
+    // ---- layers 2-4: fill timing, link count, blocklist ---------------------
+    const verdict = spamCheck({ elapsedMs: Date.now() - openedAt, message });
+    if (verdict === 'rate') {
+      showToast(t('contact.errRate'));
+      return;
+    }
+    if (verdict === 'reject') {
+      // Deliberately the same copy as a network failure: a bot cannot tell
+      // which rule it tripped, and a real person who simply typed very fast can
+      // just hit send again — by then the fill-time check has been satisfied.
+      showToast(t('contact.errSend'));
+      return;
+    }
+
+    const payload = {
+      name: form.querySelector('#cfName').value.trim(),
+      email: form.querySelector('#cfEmail').value.trim(),
+      organization: form.querySelector('#cfOrg').value.trim(),
+      topic: form.querySelector('#cfTopic').value,
+      message: message,
+      lang: currentLang,
+      page: location.href
+    };
+    // Formspree and Web3Forms both read `subject` to label the notification
+    // email; other endpoints ignore the extra field.
+    if (SITE_CONFIG.formSubject) payload.subject = SITE_CONFIG.formSubject;
+    // Omitted entirely when Turnstile isn't configured, so an endpoint that
+    // validates the token fails loudly rather than on an empty string.
+    const token = turnstileToken();
+    if (token) payload.turnstileToken = token;
+
+    setBusy(true);
+
+    try {
+      const resp = await fetch(SITE_CONFIG.formEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    } catch (err) {
+      setBusy(false);
+      showToast(t('contact.errSend'));
+      return;
+    }
+
+    setBusy(false);
+
+    // Recorded only after a confirmed send, so a failed attempt doesn't burn
+    // the user's rate-limit budget.
+    const log = readSpamLog().filter(x => Date.now() - x < 3600 * 1000);
+    log.push(Date.now());
+    writeSpamLog(log);
+
+    // Turnstile tokens are single-use; clear it so the next open starts clean.
+    if (window.turnstile && typeof window.turnstile.reset === 'function') {
+      try { window.turnstile.reset(); } catch (err) { /* not rendered */ }
+    }
+
+    showSuccess();
+  });
+}
+
+// ===== FLOATING CONTACT BUTTON =====
+function initFabContact() {
+  const fab = document.getElementById('fabContact');
+  const hero = document.getElementById('home');
+  const footer = document.querySelector('.footer');
+  if (!fab) return;
+
+  let pastHero = false;
+  let footerVisible = false;
+  let ticking = false;
+
+  function sync() {
+    fab.classList.toggle('visible', pastHero && !footerVisible);
+    ticking = false;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(() => {
+        pastHero = window.scrollY > (hero ? hero.offsetHeight * 0.6 : 400);
+        sync();
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  if (footer && 'IntersectionObserver' in window) {
+    new IntersectionObserver(entries => {
+      footerVisible = entries[0].isIntersecting;
+      sync();
+    }, { threshold: 0 }).observe(footer);
+  }
+}
+
+// ===== MEMBER AVATARS =====
+// Every .member-avatar ships with a photo *and* an initials fallback. The photo
+// stays transparent until we know it actually decoded, so a renamed or missing
+// team/*.jpg leaves the initials showing instead of a broken-image glyph.
+function initMemberAvatars() {
+  document.querySelectorAll('.member-avatar').forEach(wrap => {
+    const img = wrap.querySelector('.member-avatar-img');
+    if (!img) return;
+
+    const show = () => wrap.classList.add('is-loaded');
+    const hide = () => wrap.classList.remove('is-loaded');
+
+    // A cached image can already be finished before this runs, in which case no
+    // load event will ever fire — so check the current state before subscribing.
+    if (img.complete) {
+      (img.naturalWidth > 0 ? show : hide)();
+      return;
+    }
+    img.addEventListener('load', show, { once: true });
+    img.addEventListener('error', hide, { once: true });
+  });
+}
+
+// ===== EVENT PHOTO LIGHTBOX =====
+// One shared dialog for every [data-photo-open] trigger. Click handling is
+// delegated, so adding more event photos needs no change here.
+function initPhotoLightbox() {
+  const box = document.getElementById('photoLightbox');
+  const img = document.getElementById('lightboxImg');
+  const cap = document.getElementById('lightboxCaption');
+  if (!box || !img) return;
+
+  const closeBtn = box.querySelector('.lightbox-close');
+  let lastFocused = null;
+  let hideTimer = null;
+
+  // The caption is read back off the card rather than stored in the markup:
+  // the title and date are already translated by data-i18n, so deriving from
+  // them keeps one source of truth instead of a third copy of the same words.
+  function captionFor(trigger) {
+    const card = trigger.closest('.timeline-content');
+    if (!card) return '';
+    return ['.timeline-title', '.timeline-date']
+      .map(sel => {
+        const el = card.querySelector(sel);
+        return el ? el.textContent.trim() : '';
+      })
+      .filter(Boolean)
+      .join(' \u00b7 ');
+  }
+
+  function open(trigger) {
+    const thumb = trigger.querySelector('img');
+    if (!thumb) return;
+    clearTimeout(hideTimer);
+    lastFocused = document.activeElement;
+
+    img.src = thumb.currentSrc || thumb.src;
+    img.alt = thumb.alt || '';
+    cap.textContent = captionFor(trigger);
+    box.hidden = false;
+    void box.offsetWidth; // force a reflow so the transition actually runs
+    box.classList.add('is-open');
+    document.body.classList.add('lightbox-open');
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function close() {
+    box.classList.remove('is-open');
+    document.body.classList.remove('lightbox-open');
+    hideTimer = setTimeout(() => {
+      box.hidden = true;
+      // release the decoded bitmap once the dialog is out of sight
+      img.removeAttribute('src');
+    }, 220);
+    if (lastFocused && lastFocused.focus) lastFocused.focus();
+  }
+
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+
+    const trigger = t.closest('[data-photo-open]');
+    if (trigger) {
+      e.preventDefault();
+      open(trigger);
+      return;
+    }
+    if (!box.hidden && t.closest('[data-lightbox-close]')) {
+      e.preventDefault();
+      close();
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (box.hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === 'Tab') {
+      // the close button is the only focusable node in here; without this,
+      // Tab would walk into the page behind the overlay
+      e.preventDefault();
+      if (closeBtn) closeBtn.focus();
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('buzz3-theme');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -1753,6 +2673,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initScrollSpy();
   initBackToTop();
   initParallax();
+  initTelegramQR();
+  initContactModal();
+  initFabContact();
+  initMemberAvatars();
+  initPhotoLightbox();
 
   if (!prefersReducedMotion) {
     setTimeout(typeText, 300);
