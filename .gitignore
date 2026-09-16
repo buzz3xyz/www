@@ -1,0 +1,23 @@
+# ===== OS junk =====
+# .DS_Store was previously tracked in this repo, which means every macOS
+# visitor who opened the folder produced a dirty working tree.
+.DS_Store
+**/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ===== Local tool state =====
+# Dot-prefixed paths are already excluded from the published site by Jekyll,
+# but they are not excluded from git. These are machine-local only.
+.claude/
+.workbuddy-ai/
+.oma/
+
+# ===== Editors =====
+.vscode/
+.idea/
+*.swp
+*~
