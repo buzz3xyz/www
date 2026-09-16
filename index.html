@@ -632,17 +632,27 @@
       <div class="cta-layout" data-page-node-id="bqz78hxqBlEbYDiep28Acj">
         <div class="cta-content reveal" data-page-node-id="WN6z448Z1sII3MFi0IyqAL">
           <h2 class="cta-title" data-i18n="cta.title" data-page-node-id="lAg3DKXJiKkEyU98mOqqh4">Ready to Build the Future?</h2>
-          <p class="cta-subtitle" data-i18n="cta.subtitle" data-page-node-id="APkamMRRSuP1GDHRc6zORW">Join 2,500+ Web3 enthusiasts and start shaping the decentralized tomorrow</p>
+          <p class="cta-subtitle" data-i18n="cta.subtitle" data-page-node-id="APkamMRRSuP1GDHRc6zORW">Partnership, consulting, or just a question — tell us what you have in mind.</p>
 
-          <form class="cta-form" onsubmit="handleSubmit(event)" data-page-node-id="Emcsv1XF9ZW5lHIm92NzM7">
+          <!-- Newsletter signup, hidden until its backend is wired up. The markup
+               and its handleSubmit() handler are deliberately kept intact so
+               bringing it back is just deleting the `hidden` attribute here (plus
+               the matching .cta-form[hidden] rule in buzz3.css). `hidden` alone is
+               not enough on its own: .cta-form sets display:flex, which wins over
+               the attribute's UA display:none. The slot now carries the
+               "Let's Talk" contact button below instead. -->
+          <form class="cta-form" hidden onsubmit="handleSubmit(event)" data-page-node-id="Emcsv1XF9ZW5lHIm92NzM7">
             <input type="email" class="cta-input" placeholder="Enter your email" required aria-label="Email address" data-i18n-placeholder="cta.emailPlaceholder" data-page-node-id="ZtefpehRwfE0Dj7oUmwFCi">
             <button type="submit" class="btn-primary" data-i18n="cta.joinBtn" data-page-node-id="iWuPCz1SoW9MweDi0JgwGa">Join Now</button>
           </form>
 
           <div class="cta-actions" data-page-node-id="Kk05qk2Eg8aQhJwm0jE5Jx">
-            <button type="button" class="btn-outline btn-contact-lg" data-contact-open data-page-node-id="bXLNDbG4jfyA3Ch2nsiuqJ">
+            <!-- Filled rather than outlined: with the newsletter form gone this
+                 is the only action in the CTA column, so it has to carry the
+                 visual weight the form used to. -->
+            <button type="button" class="btn-primary btn-contact-lg" data-contact-open data-page-node-id="bXLNDbG4jfyA3Ch2nsiuqJ">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" data-page-node-id="3IAd9EWCmEKyofSWjY1HGH"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" data-page-node-id="flztQjgRrxvpdQYOvgBJun"/></svg>
-              <span data-i18n="contact.openBtn" data-page-node-id="H2sX8WaiHislDt0pIVfmZQ">Contact Us</span>
+              <span data-i18n="cta.talkBtn" data-page-node-id="H2sX8WaiHislDt0pIVfmZQ">Let's Talk</span>
             </button>
           </div>
 

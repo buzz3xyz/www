@@ -2010,6 +2010,17 @@ html[data-wallet="off"] .btn-wallet {
   margin: 0 auto 48px;
 }
 
+/* The newsletter signup is hidden for now (see the comment in index.html).
+   `display: flex` above overrides the `hidden` attribute's UA `display: none`,
+   so the attribute on its own would leave the row on screen -- this rule is
+   what actually makes it authoritative. Both this rule and the attribute go
+   away together when the signup comes back. */
+.cta-form[hidden] { display: none; }
+
+/* With the form gone, its 24px margin-top would stack on top of the subtitle's
+   own 48px and leave an oversized gap above the contact button. */
+.cta-form[hidden] + .cta-actions { margin-top: 0; }
+
 .cta-input {
   flex: 1;
   padding: 18px 24px;
