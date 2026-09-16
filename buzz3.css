@@ -2010,6 +2010,17 @@ html[data-wallet="off"] .btn-wallet {
   margin: 0 auto 48px;
 }
 
+/* The newsletter signup is hidden for now (see the comment in index.html).
+   `display: flex` above overrides the `hidden` attribute's UA `display: none`,
+   so the attribute on its own would leave the row on screen -- this rule is
+   what actually makes it authoritative. Both this rule and the attribute go
+   away together when the signup comes back. */
+.cta-form[hidden] { display: none; }
+
+/* With the form gone, its 24px margin-top would stack on top of the subtitle's
+   own 48px and leave an oversized gap above the contact button. */
+.cta-form[hidden] + .cta-actions { margin-top: 0; }
+
 .cta-input {
   flex: 1;
   padding: 18px 24px;
@@ -2337,13 +2348,29 @@ html[data-wallet="off"] .btn-wallet {
     opacity: 0;
     pointer-events: none;
     transform: translateX(30px);
-    transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+    /* visibility is what actually removes the panel from the keyboard tab order
+       and from the accessibility tree. opacity:0 and pointer-events:none do NOT:
+       with only those two, the 7 links plus the Contact Us button inside stayed
+       focusable while the menu was closed, so tabbing from the logo walked
+       through 8 invisible focus stops before reaching the visible controls
+       (WCAG 2.4.3 Focus Order / 2.4.7 Focus Visible).
+
+       The 0s delay on the closing rule lets the 400ms fade-out finish before it
+       flips to hidden -- switching it instantly would cut the animation short.
+       .active below switches it back with no delay, so the panel is visible the
+       instant the menu opens. */
+    visibility: hidden;
+    transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo),
+      visibility 0s linear 0.4s;
   }
 
   .nav-links.active {
     opacity: 1;
     pointer-events: auto;
     transform: translateX(0);
+    visibility: visible;
+    transition: opacity 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo),
+      visibility 0s;
   }
 
   .nav-links a {

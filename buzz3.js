@@ -8,7 +8,7 @@ const SITE_CONFIG = {
   //   Formspree   https://formspree.io/f/xxxxxxxx
   //   Web3Forms   https://api.web3forms.com/submit/<ACCESS_KEY>
   //   Your own    any endpoint that takes POST + JSON and answers 2xx
-  formEndpoint: '',
+  formEndpoint: 'https://formspree.io/f/xdeknbak',
 
   // Optional. Sent as `subject`, which both Formspree and Web3Forms read to
   // label the notification email. Other endpoints ignore unknown fields.
@@ -22,7 +22,7 @@ const SITE_CONFIG = {
   turnstileSiteKey: '',
 
   socials: {
-    twitter: '',   // e.g. 'https://x.com/buzz3xyz'
+    twitter: 'https://x.com/buzz3_xyz',   // e.g. 'https://x.com/buzz3xyz'
     discord: '',
     github: '',
     // Telegram invite link — the QR card renders itself from this value.
@@ -302,9 +302,16 @@ const translations = {
     
     // CTA
     'cta.title': 'Ready to Build the Future?',
-    'cta.subtitle': 'Join 2,500+ Web3 enthusiasts and start shaping the decentralized tomorrow',
+    // Names the actual enquiry topics (matching the modal's Topic select)
+    // instead of the old "Join 2,500+ enthusiasts", whose verb had nothing to
+    // attach to once the newsletter signup was hidden.
+    'cta.subtitle': 'Partnership, consulting, or just a question — tell us what you have in mind.',
     'cta.emailPlaceholder': 'Enter your email',
     'cta.joinBtn': 'Join Now',
+    // Label for the CTA contact button. Deliberately its own key rather than
+    // reusing contact.openBtn: the nav and the floating button still read
+    // "Contact Us", while this one carries the friendlier "Let's Talk".
+    'cta.talkBtn': "Let's Talk",
     
     // Footer
     'footer.desc': 'Building the future of Web3 through community, education, and innovation. Join us in shaping the decentralized world.',
@@ -499,9 +506,10 @@ const translations = {
     
     // CTA
     'cta.title': '准备好构建未来了吗？',
-    'cta.subtitle': '加入 2,500+ Web3 爱好者，开始塑造去中心化的明天',
+    'cta.subtitle': '合作、开发，或者只是想问个问题——告诉我们你的想法。',
     'cta.emailPlaceholder': '输入您的邮箱',
     'cta.joinBtn': '立即加入',
+    'cta.talkBtn': '联系我们',
     
     // Footer
     'footer.desc': '通过社区、教育和创新构建 Web3 的未来。加入我们，共同塑造去中心化世界。',
@@ -696,9 +704,10 @@ const translations = {
     
     // CTA
     'cta.title': '未来を構築する準備はできましたか？',
-    'cta.subtitle': '2,500 以上の Web3 エンスージアストに参加し、分散型の明日を形にしましょう',
+    'cta.subtitle': 'パートナーシップ、開発、ちょっとした質問まで。お気軽にご相談ください。',
     'cta.emailPlaceholder': 'メールアドレスを入力',
     'cta.joinBtn': '今すぐ参加',
+    'cta.talkBtn': 'お問い合わせ',
     
     // Footer
     'footer.desc': 'コミュニティ、教育、イノベーションを通じて Web3 の未来を構築。分散型世界の構築に参加しましょう。',

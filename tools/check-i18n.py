@@ -31,7 +31,13 @@ from collections import OrderedDict
 # `data-i18n`, `data-i18n-alt`, `data-i18n-placeholder`, ... -> the attribute name
 ATTR_RE = re.compile(r'data-i18n(?:-[\w-]+)?\s*=\s*"([^"]+)"')
 # a dictionary entry: 'some.key': 'value',
-ENTRY_RE = re.compile(r"^\s*'([^']+)'\s*:\s*'((?:[^'\\]|\\.)*)'\s*,?\s*$")
+# Both quote styles are accepted for the value. Double quotes are the sane way
+# to write copy containing an apostrophe -- 'Let\'s Talk' reads far worse than
+# "Let's Talk" -- so rejecting them here would push authors into worse style
+# for no reason. Group 2 is the single-quoted form, group 3 the double-quoted.
+ENTRY_RE = re.compile(
+    r"""^\s*'([^']+)'\s*:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")\s*,?\s*$"""
+)
 # start of a locale block: `  en: {`
 LOCALE_RE = re.compile(r'^\s{2}([A-Za-z_][\w-]*)\s*:\s*\{\s*$')
 # the dictionary literal itself. Scoping matters: SITE_CONFIG also has a nested
@@ -75,7 +81,8 @@ def parse_js(path):
             m = ENTRY_RE.match(line)
             if not m:
                 continue
-            key, value = m.group(1), m.group(2)
+            key = m.group(1)
+            value = m.group(2) if m.group(2) is not None else m.group(3)
             if key in locales[current]:
                 dups[current].append(key)
             locales[current][key] = value
