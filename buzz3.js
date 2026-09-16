@@ -8,7 +8,7 @@ const SITE_CONFIG = {
   //   Formspree   https://formspree.io/f/xxxxxxxx
   //   Web3Forms   https://api.web3forms.com/submit/<ACCESS_KEY>
   //   Your own    any endpoint that takes POST + JSON and answers 2xx
-  formEndpoint: '',
+  formEndpoint: 'https://formspree.io/f/xdeknbak',
 
   // Optional. Sent as `subject`, which both Formspree and Web3Forms read to
   // label the notification email. Other endpoints ignore unknown fields.
@@ -22,7 +22,7 @@ const SITE_CONFIG = {
   turnstileSiteKey: '',
 
   socials: {
-    twitter: '',   // e.g. 'https://x.com/buzz3xyz'
+    twitter: 'https://x.com/buzz3_xyz',   // e.g. 'https://x.com/buzz3xyz'
     discord: '',
     github: '',
     // Telegram invite link — the QR card renders itself from this value.
