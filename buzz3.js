@@ -243,7 +243,7 @@ const translations = {
     'members.linyang.bio': 'Leads research and strategic initiatives across Web3 and AI, with a focus on emerging technologies, market trends, and practical product applications.',
     'members.duchao.role': 'AI Lead',
     'members.duchao.bio': 'Leads AI-related technology and product development, with extensive experience across the Web3 ecosystem.',
-    'members.naito-y.role': 'Community Manager',
+    'members.naito-y.role': 'Community Lead',
     'members.naito-y.bio': 'Builds and manages relationships between developers, users, and the broader Web3 ecosystem. Focuses on community growth and developer engagement.',
     'members.viewAll': 'View All Members',
     
