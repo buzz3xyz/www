@@ -243,7 +243,7 @@ const translations = {
     'members.linyang.bio': 'Leads research and strategic initiatives across Web3 and AI, with a focus on emerging technologies, market trends, and practical product applications.',
     'members.duchao.role': 'AI Lead',
     'members.duchao.bio': 'Leads AI-related technology and product development, with extensive experience across the Web3 ecosystem.',
-    'members.naito-y.role': 'Community Manager',
+    'members.naito-y.role': 'Community Lead',
     'members.naito-y.bio': 'Builds and manages relationships between developers, users, and the broader Web3 ecosystem. Focuses on community growth and developer engagement.',
     'members.viewAll': 'View All Members',
     
@@ -447,7 +447,7 @@ const translations = {
     'members.linyang.bio': '主导 Web3 与 AI 领域的研究与战略项目，聚焦新兴技术、市场趋势与实际产品落地。',
     'members.duchao.role': 'AI 负责人',
     'members.duchao.bio': '主导 AI 相关技术与产品研发，在 Web3 生态拥有丰富经验。',
-    'members.naito-y.role': '社区经理',
+    'members.naito-y.role': '社区负责人',
     'members.naito-y.bio': '建立并维护开发者、用户与更广泛 Web3 生态之间的联系，专注社区增长与开发者互动。',
     'members.viewAll': '查看所有成员',
     
@@ -645,7 +645,7 @@ const translations = {
     'members.linyang.bio': 'Web3 と AI 領域のリサーチおよび戦略的取り組みを主導。新興技術、市場トレンド、実用的なプロダクト応用に注力しています。',
     'members.duchao.role': 'AI リード',
     'members.duchao.bio': 'AI 関連の技術およびプロダクト開発を主導。Web3 エコシステムにおける豊富な経験を持ちます。',
-    'members.naito-y.role': 'コミュニティマネージャー',
+    'members.naito-y.role': 'コミュニティリード',
     'members.naito-y.bio': '開発者、ユーザー、そしてより広い Web3 エコシステムとの関係を構築・運営。コミュニティの成長と開発者エンゲージメントに注力しています。',
     'members.viewAll': '全メンバーを見る',
     
